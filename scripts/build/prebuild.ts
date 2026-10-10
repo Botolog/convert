@@ -31,6 +31,7 @@ export const prebuildArgs = {
     type: "boolean",
     description: "Rebuild and verify the prebuilt artifacts without writing",
   },
+  "keep-tmp": { type: "boolean", description: "Keep the prebuild folder for manual investigation" },
 } as const satisfies ArgsDef;
 
 export type PrebuildArgs = ParsedArgs<typeof prebuildArgs>;
@@ -173,7 +174,11 @@ async function build(
 
     return await Bun.file(join(tmp, "out.tar.gz")).bytes();
   } finally {
-    await rm(tmp, { recursive: true, force: true });
+    if (!args["keep-tmp"]) await rm(tmp, { recursive: true, force: true });
+    else {
+      console.log(`Keeping folder ${tmp}.`);
+      console.log("You should probably delete it after you are done.");
+    }
   }
 }
 
