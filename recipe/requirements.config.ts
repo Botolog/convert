@@ -129,4 +129,13 @@ export default [
     image:
       "emscripten/emsdk:6.0.10@sha256:e077d54e2b8970575ebc4f185ac1de0b95c05f2b266134d4ba27449af7aebf65",
   },
+  {
+    name: "ffmpeg",
+    url: "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n9.0.2.tar.gz",
+    hash: ["sha256", "6e374ed621e48faa40639307dff48ba6fe574a509977956d2cce9669b7cc27e9"],
+    patches: ["make.patch", "allmuxers.patch"],
+    prebuild: "build.sh",
+    image:
+      "emscripten/emsdk:6.0.10@sha256:e077d54e2b8970575ebc4f185ac1de0b95c05f2b266134d4ba27449af7aebf65",
+  },
 ] satisfies RequirementsConfig;
