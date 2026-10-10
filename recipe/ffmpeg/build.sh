@@ -1,3 +1,5 @@
+# thanks to ffmpeg.wasm for providing (most) of these flags
+# https://github.com/ffmpegwasm/ffmpeg.wasm
 export LDFLAGS_EMCC="-sENVIRONMENT=web,worker -sEXPORT_ES6 -sMODULARIZE -sINVOKE_RUN=0 \
     -sEXPORTED_RUNTIME_METHODS=callMain,FS -sEXPORTED_FUNCTIONS=_main,_emscripten_force_exit \
     -sEXIT_RUNTIME=1 -sINITIAL_MEMORY=32MB -sALLOW_MEMORY_GROWTH \
