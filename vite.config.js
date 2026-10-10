@@ -44,6 +44,10 @@ export default defineConfig({
           src: "built/typst-assets/files/fonts/*",
           dest: "external/typst/",
         },
+        {
+          src: "node_modules/coi-serviceworker/coi-serviceworker.min.js",
+          dest: "./", // has to be in the same folder
+        },
       ],
     }),
     preact({
