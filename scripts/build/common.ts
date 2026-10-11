@@ -140,6 +140,8 @@ export async function extractZip(outPath: string, zip: Uint8Array) {
         throw new Error(`Zip entry ${entry.name} escapes the output directory.`);
       }
       await Bun.write(join(dir, path), await entry.async("uint8array"));
+      const mode = Number(entry.unixPermissions ?? 0) & 0o777;
+      if (mode) await chmod(join(dir, path), mode | 0o200);
     }
   });
 }
