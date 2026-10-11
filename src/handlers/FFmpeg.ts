@@ -231,10 +231,6 @@ class FFmpegHandler implements FormatHandler {
     });
 
     const remove = [
-      // AV1 doesn't seem to be included in WASM FFmpeg
-      "avif",
-      // HEVC stalls when attempted
-      "hevc",
       // RTSP stalls when attempted
       "rtsp",
     ];
@@ -276,6 +272,7 @@ class FFmpegHandler implements FormatHandler {
     this.supportedFormats.push(Formats.PNG.builder("png").from());
 
     // Encoding-specific formats
+    // todo: this should be an option, when we get them
     this.supportedFormats.push(Formats.OGG_VORBIS.builder("ogg").to());
 
     this.supportedFormats.push(Formats.OGG_OPUS.builder("ogg").to());

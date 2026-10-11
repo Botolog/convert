@@ -22,4 +22,21 @@ export default [
     url: "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64.zip",
     hash: ["sha256", "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913"],
   },
+  {
+    name: "ninja",
+    url: "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip",
+    hash: ["sha256", "5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6"],
+  },
+  {
+    name: "meson",
+    url: "https://github.com/mesonbuild/meson/releases/download/1.12.1/meson-1.12.1.tar.gz",
+    hash: ["sha256", "ab0a6ca09f8ef70c564c8241fb5a23957886a0b53fb58412b5e07eaf07dba743"],
+    toolchains: ["ninja"],
+  },
+  {
+    name: "pkgconf",
+    url: "https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.7.tar.xz",
+    hash: ["sha256", "c926ff491cbd9a331a589160811bd97ab1749b4d5198a519338f2cdfabe6940a"],
+    prebuild: "build.sh",
+  },
 ] satisfies ToolchainsConfig;

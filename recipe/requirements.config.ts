@@ -130,6 +130,6 @@ export default [
     hash: ["sha256", "6e374ed621e48faa40639307dff48ba6fe574a509977956d2cce9669b7cc27e9"],
     patches: ["make.patch", "allmuxers.patch"],
     prebuild: "build.sh",
-    toolchains: ["emscripten"],
+    toolchains: ["emscripten", "meson", "pkgconf"],
   },
 ] satisfies RequirementsConfig;
