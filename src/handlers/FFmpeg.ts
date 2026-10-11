@@ -142,6 +142,8 @@ class FFmpegHandler implements FormatHandler {
 
     this.supportedFormats = [];
     for (let line of formatLines) {
+      const flags = line.slice(0, 4);
+      line = line.slice(4);
       let len;
       do {
         len = line.length;
@@ -150,11 +152,10 @@ class FFmpegHandler implements FormatHandler {
       line = line.trim();
 
       const parts = line.split(" ");
-      if (parts.length < 2) continue;
+      if (!parts[0]) continue;
 
-      const flags = parts[0];
-      const description = parts.slice(2).join(" ");
-      const formats = parts[1].split(",");
+      const description = parts.slice(1).join(" ");
+      const formats = parts[0].split(",");
 
       if (description.startsWith("piped ")) continue;
       if (description.toLowerCase().includes("subtitle")) continue;
