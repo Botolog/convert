@@ -13,8 +13,8 @@ const PREBUILT_DIR = join(import.meta.dir, "../../prebuilt");
 
 export const PREBUILD_VERSION = 1;
 
-export const PACK_IMAGE =
-  "debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251";
+export const BASE_DOCKERFILE = join(import.meta.dir, "base.Dockerfile");
+export const PREBUILD_SCRIPT = join(import.meta.dir, "prebuild.sh");
 
 export type Scope = {
   recipeDir: string;
@@ -28,6 +28,14 @@ export const ROOT_SCOPE: Scope = {
   outDir: OUT_DIR,
   stateDir: CACHE_DIR,
   prebuiltDir: PREBUILT_DIR,
+};
+
+// shared by all recipes, only cached locally and mounted into prebuilds under /toolchains
+export const TOOLCHAIN_SCOPE: Scope = {
+  recipeDir: join(RECIPE_DIR, "toolchains"),
+  outDir: join(CACHE_DIR, "toolchains"),
+  stateDir: join(CACHE_DIR, "toolchain-state"),
+  prebuiltDir: join(CACHE_DIR, "toolchain-prebuilts"),
 };
 
 export function subrecipeScope(scope: Scope, name: string): Scope {

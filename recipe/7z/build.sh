@@ -5,5 +5,5 @@ export LDFLAGS_EMCC='-O2 -sENVIRONMENT=web,worker -s "EXPORTED_RUNTIME_METHODS=[
     -s INVOKE_RUN=0 -s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME=SevenZip \
     --emit-tsd 7zz.d.ts'
 cd CPP/7zip/Bundles/Alone2
-emmake make -j"$(nproc)" -f makefile.emcc
+emmake make $JOBS -f makefile.emcc
 cp _o/7zz.* $OUT_DIR/

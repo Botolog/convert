@@ -11,5 +11,5 @@ emconfigure ./configure \
     --disable-asm --disable-stripping --disable-debug --disable-runtime-cpudetect \
     --disable-autodetect --disable-doc --disable-ffplay --disable-ffprobe \
     --extra-cflags='-O3 -pthread' --extra-ldflags='-O3 -pthread'
-emmake make -j"$(nproc)" ffmpeg-core.js
+emmake make $JOBS ffmpeg-core.js
 cp ffmpeg-core.js ffmpeg-core.wasm ffmpeg-core.d.ts "$OUT_DIR/"

@@ -1,1 +1,1 @@
-gcc -O2 -s -o "$OUT_DIR/stub.elf" /recipe/stub.c
+gcc -O2 -s -o "$OUT_DIR/stub.elf" "$RECIPE_DIR/stub.c"
