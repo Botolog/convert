@@ -3,7 +3,14 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 import preact from "@preact/preset-vite";
 import { fileURLToPath } from "node:url";
 
+const isolationHeaders = {
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Embedder-Policy": "require-corp",
+};
+
 export default defineConfig({
+  server: { headers: isolationHeaders },
+  preview: { headers: isolationHeaders },
   publicDir: "public",
   optimizeDeps: {
     include: ["turbowarp-packager", "turbowarp-unpackager"],
@@ -43,10 +50,6 @@ export default defineConfig({
         {
           src: "built/typst-assets/files/fonts/*",
           dest: "external/typst/",
-        },
-        {
-          src: "node_modules/coi-serviceworker/coi-serviceworker.min.js",
-          dest: "./", // has to be in the same folder
         },
       ],
     }),

@@ -62,7 +62,6 @@
     "buffer": "^6.0.3",
     "celaria-formats": "^1.0.2",
     "chess.js": "^1.4.0",
-    "coi-serviceworker": "^0.1.7",
     "comlink": "^4.4.2",
     "confbox": "^0.3.1",
     "dom-to-svg": "^0.12.2",
