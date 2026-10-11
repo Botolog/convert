@@ -111,6 +111,8 @@ class FFmpegHandler implements FormatHandler {
   }
 
   async init() {
+    if (!globalThis.crossOriginIsolated) throw new Error("can't run without multithreading!");
+
     const formatLines = (await this.execFFmpeg(["-formats", "-hide_banner"]))
       .split(" ---\n")[1]
       .split("\n");
