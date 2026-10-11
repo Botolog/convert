@@ -273,6 +273,8 @@ class FFmpegHandler implements FormatHandler {
     // Add PNG input explicitly - FFmpeg otherwise treats both PNG and
     // APNG as the same thing.
     this.supportedFormats.push(Formats.PNG.builder("png").from());
+    // the other way for webp
+    this.supportedFormats.push(Formats.WEBP.builder("webp_anim").from());
 
     // Encoding-specific formats
     // todo: this should be an option, when we get them
