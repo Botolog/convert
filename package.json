@@ -10,6 +10,7 @@
     "build:assemble": "bun run scripts/build.ts assemble",
     "build:prebuild": "bun run scripts/build.ts prebuild",
     "build:check": "bun run scripts/build.ts check",
+    "build:upload": "bun run scripts/build.ts upload",
     "build:patch": "bun run scripts/build.ts patch",
     "build:add": "bun run scripts/build.ts add",
     "dev": "bun run build:assemble --all && vite",

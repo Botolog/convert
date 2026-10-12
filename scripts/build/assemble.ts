@@ -7,12 +7,14 @@ import {
   extractTarball,
   extractTarballNative,
   extractZip,
-  findPrebuilts,
+  findPrebuilt,
+  prebuiltPath,
   loadRequirements,
   subrecipeScope,
   type Scope,
 } from "./common";
 import { hashFile, hashInputs, listFiles, updateHash } from "./hash";
+import { fetchPrebuilt } from "./release";
 import {
   hasSource,
   isAssembled,
@@ -46,7 +48,7 @@ function hashPath(requirement: Requirement, scope: Scope) {
 
 async function findCurrentPrebuilt(requirement: PrebuildRequirement, scope: Scope) {
   const inputs = await hashInputs(requirement, scope);
-  return (await findPrebuilts(requirement, scope)).find((prebuilt) => prebuilt.inputs === inputs);
+  return await findPrebuilt(requirement, scope, inputs);
 }
 
 async function hashRequirement(requirement: Requirement, scope: Scope) {
@@ -56,7 +58,7 @@ async function hashRequirement(requirement: Requirement, scope: Scope) {
 
   if (isPrebuilt(requirement)) {
     const prebuilt = await findCurrentPrebuilt(requirement, scope);
-    if (prebuilt) updateHash(hash, await Bun.file(prebuilt.path).bytes());
+    if (prebuilt) updateHash(hash, prebuilt.sha256);
   } else if (isAssembled(requirement)) {
     const sub = subrecipeScope(scope, requirement.name);
     for (const subrequirement of await loadRequirements(sub.recipeDir)) {
@@ -193,7 +195,8 @@ async function assemblePrebuilt(requirement: PrebuildRequirement, scope: Scope) 
     );
   }
 
-  await extractTarball(join(scope.outDir, requirement.name), await Bun.file(prebuilt.path).bytes());
+  const tarball = await fetchPrebuilt(prebuilt, prebuiltPath(requirement, scope));
+  await extractTarball(join(scope.outDir, requirement.name), tarball);
 }
 
 async function assembleRequirementChecked(

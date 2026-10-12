@@ -48,6 +48,17 @@ export function subrecipeScope(scope: Scope, name: string): Scope {
   };
 }
 
+// for the interactive commands, an empty answer picks the fallback
+export function ask<T extends string>(question: string, choices: T[], fallback: T): T {
+  const hint = choices.map((choice) => (choice === fallback ? choice.toUpperCase() : choice));
+  for (;;) {
+    const answer = (prompt(`${question} [${hint.join("/")}]`) ?? "").trim().toLowerCase();
+    if (!answer) return fallback;
+    const choice = choices.find((choice) => choice === answer);
+    if (choice) return choice;
+  }
+}
+
 export async function loadRequirements(recipeDir: string): Promise<RequirementsConfig> {
   const configPath = join(recipeDir, "requirements.config.ts");
   if (!(await Bun.file(configPath).exists())) return [];
@@ -79,22 +90,28 @@ export function selectRequirements(
   return [...new Set(names)].map((name) => byName.get(name)!);
 }
 
-export function prebuiltPath(requirement: PrebuildRequirement, scope: Scope, inputs: string) {
-  return join(scope.prebuiltDir, `${requirement.name}-${inputs}.tar.gz`);
+// prebuilt/<name>.json points to the tarball in the github release, see release.ts. small
+// tarballs have no url and are committed next to it instead, as prebuilt/<name>.tar.gz
+export type Pointer = { inputs: string; url?: string; sha256: string; size: number };
+
+export function prebuiltPath(requirement: PrebuildRequirement, scope: Scope) {
+  return join(scope.prebuiltDir, `${requirement.name}.json`);
 }
 
-export async function findPrebuilts(requirement: PrebuildRequirement, scope: Scope) {
-  const pattern = new RegExp(`^${RegExp.escape(requirement.name)}-([0-9a-f]{64})\\.tar\\.gz$`);
-  let entries: string[];
-  try {
-    entries = await readdir(scope.prebuiltDir);
-  } catch {
-    return [];
-  }
-  return entries.flatMap((entry) => {
-    const inputs = pattern.exec(entry)?.[1];
-    return inputs ? [{ path: join(scope.prebuiltDir, entry), inputs }] : [];
-  });
+export function inlinePath(pointerPath: string) {
+  return pointerPath.replace(/\.json$/, ".tar.gz");
+}
+
+export async function readPointer(path: string): Promise<Pointer> {
+  return await Bun.file(path).json();
+}
+
+// the pointer, but only if it was built from these inputs
+export async function findPrebuilt(requirement: PrebuildRequirement, scope: Scope, inputs: string) {
+  const path = prebuiltPath(requirement, scope);
+  if (!(await Bun.file(path).exists())) return undefined;
+  const pointer = await readPointer(path);
+  return pointer.inputs === inputs ? pointer : undefined;
 }
 
 async function extractInto(outPath: string, extract: (dir: string) => Promise<void>) {

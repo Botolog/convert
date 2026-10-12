@@ -72,7 +72,7 @@ The script should produce the output in the `process.env.OUT_DIR` folder. You ca
 
 ### Prebuild script
 
-A **prebuild** script is a shell script that runs on the sources and generates the output (usually a binary) in a docker container deterministically, after which the output is checked into the git repo under `prebuilt/*.tar.gz`.
+A **prebuild** script is a shell script that runs on the sources and generates the output (usually a binary) in a docker container deterministically, after which the output is uploaded to the `prebuilts` GitHub release and git only tracks a small pointer to it under `prebuilt/*.json`.
 
 ```ts
 {
@@ -100,7 +100,18 @@ Prebuilt artifacts require building manually:
 bun run build:prebuild <name or --all>
 ```
 
-The resulting `prebuilt/name-<hash>.tar.gz` file needs to be comitted into git.
+Then commit `prebuilt/` and upload the build. This needs `gh` logged in, and asks where to upload if you can't push to this repo:
+
+```bash
+bun run build:upload
+```
+
+Maintainers take over prebuilts from a contributor's PR with:
+
+```bash
+gh pr checkout <number>
+bun run build:upload --adopt
+```
 
 ## Toolchains
 

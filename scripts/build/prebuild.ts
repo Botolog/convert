@@ -9,13 +9,15 @@ import {
   PREBUILD_SCRIPT,
   ROOT_SCOPE,
   TOOLCHAIN_SCOPE,
-  findPrebuilts,
+  findPrebuilt,
+  inlinePath,
   loadRequirements,
   prebuiltPath,
   subrecipeScope,
   type Scope,
 } from "./common";
 import { hashFile, hashInputs } from "./hash";
+import { cachePrebuilt, writePrebuilt } from "./release";
 import { resolveToolchains, toolchainsOf } from "./toolchains";
 import {
   hasSource,
@@ -95,7 +97,7 @@ async function dockerRun(command: string[], { mounts, env = {}, network = false 
   await $`docker ${args} ${await getBaseImage()} ${command}`;
 }
 
-async function prebuild(
+export async function prebuild(
   requirement: PrebuildRequirement,
   scope: Scope,
   args: PrebuildArgs,
@@ -114,45 +116,32 @@ async function prebuild(
   }
 
   const inputs = await hashInputs(requirement, scope);
-  const existing = await findPrebuilts(requirement, scope);
+  const pointer = await findPrebuilt(requirement, scope, inputs);
 
   if (args.check) {
-    const expectedPath = prebuiltPath(requirement, scope, inputs);
-    const expectedFile = Bun.file(expectedPath);
-    if (!(await expectedFile.exists())) {
+    if (!pointer) throw new Error(`Prebuilt ${requirement.name} is missing or out of date.`);
+    const tarball = await build(requirement, scope, args);
+    const actual = hashFile("sha256", tarball);
+    if (actual !== pointer.sha256) {
       throw new Error(
-        `Prebuilt ${requirement.name} is missing or out of date, expected ${relative(ROOT_SCOPE.prebuiltDir, expectedPath)}.`,
+        `Prebuilt ${requirement.name} is not reproducible (committed sha256 ${pointer.sha256}, built sha256 ${actual}).`,
       );
     }
-    const expected = hashFile("sha256", await expectedFile.bytes());
-    const actual = hashFile("sha256", await build(requirement, scope, args));
-    if (actual !== expected) {
-      throw new Error(
-        `Prebuilt ${requirement.name} is not reproducible (committed sha256 ${expected}, built sha256 ${actual}).`,
-      );
-    }
-    const stale = existing.filter((prebuilt) => prebuilt.inputs !== inputs);
-    if (stale.length) {
-      throw new Error(
-        `Found stale prebuilt ${stale.map(({ path }) => relative(ROOT_SCOPE.prebuiltDir, path)).join(", ")}.`,
-      );
-    }
+    // a verified build is as good as the original, so it can be uploaded from here too
+    await cachePrebuilt(pointer, tarball);
     console.log(`Prebuilt ${requirement.name} is correct (sha256 ${actual}).`);
     return;
   }
 
-  if (!args.force && existing.some((prebuilt) => prebuilt.inputs === inputs)) {
-    for (const prebuilt of existing) {
-      if (prebuilt.inputs !== inputs) await removeStale(prebuilt.path, args);
-    }
+  if (!args.force && pointer) {
     if (args.verbose) console.log(`Prebuilt ${requirement.name} is up to date.`);
     return;
   }
 
   const tarball = await build(requirement, scope, args);
-  for (const { path } of existing) await removeStale(path, args);
-  await Bun.write(prebuiltPath(requirement, scope, inputs), tarball);
-  console.log(`Prebuilt ${requirement.name} (sha256 ${hashFile("sha256", tarball)}).`);
+  const path = prebuiltPath(requirement, scope);
+  const { sha256 } = await writePrebuilt(requirement, path, inputs, tarball);
+  console.log(`Prebuilt ${requirement.name} (sha256 ${sha256}).`);
 }
 
 async function build(
@@ -290,9 +279,9 @@ async function removeOrphans(
 
   const subrecipes = new Set(requirements.filter(isSubrecipe).map((r) => r.name));
   const prebuilts = new Set(
-    (
-      await Promise.all(requirements.filter(isPrebuilt).map((r) => findPrebuilts(r, scope)))
-    ).flatMap((found) => found.map(({ path }) => path)),
+    requirements
+      .filter(isPrebuilt)
+      .flatMap((r) => [prebuiltPath(r, scope), inlinePath(prebuiltPath(r, scope))]),
   );
 
   for (const entry of entries) {
