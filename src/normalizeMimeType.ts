@@ -84,6 +84,12 @@ function normalizeMimeType(mime: string) {
       return "application/jsonl";
     case "text/fb2":
       return "application/x-fictionbook+xml";
+    case "video/qoa":
+      return "audio/x-qoa";
+    case "application/elf":
+      return "application/x-elf";
+    case "video/MP2T":
+      return "video/mp2t";
   }
   return mime;
 }

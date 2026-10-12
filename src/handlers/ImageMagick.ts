@@ -33,6 +33,7 @@ class ImageMagickHandler implements FormatHandler {
       if (formatName === "svg") return;
       if (formatName === "ttf") return;
       if (formatName === "otf") return;
+      if (formatName === "avi") return;
       let mimeType = format.mimeType || mime.getType(formatName);
       if (
         !mimeType ||

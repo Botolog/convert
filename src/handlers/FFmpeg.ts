@@ -176,7 +176,7 @@ class FFmpegHandler implements FormatHandler {
         if (primaryFormat === "png") primaryFormat = "apng";
 
         let extension, mimeType;
-        const details = muxers.get(primaryFormat);
+        const details = (format !== formats[0] && muxers.get(format)) || muxers.get(primaryFormat);
         if (details) {
           extension = details.extension;
           mimeType = details.mimeType;
@@ -246,6 +246,10 @@ class FFmpegHandler implements FormatHandler {
       "rtsp",
     ];
     this.supportedFormats = this.supportedFormats.filter((c) => !remove.includes(c.internal));
+
+    for (const format of this.supportedFormats) {
+      if (format.format === "adts") format.format = "aac";
+    }
 
     // Add .qta (QuickTime Audio) support - uses same mov demuxer
     this.supportedFormats.push(Formats.QTA.builder("mov").fromTo());
