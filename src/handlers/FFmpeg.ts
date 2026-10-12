@@ -297,6 +297,15 @@ class FFmpegHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
+    ctx?: ConvertContext,
+  ): Promise<FileData[]> {
+    return this.doConvertWithArgs(inputFiles, inputFormat, outputFormat, undefined, ctx);
+  }
+
+  async doConvertWithArgs(
+    inputFiles: FileData[],
+    inputFormat: FileFormat,
+    outputFormat: FileFormat,
     args?: string[],
     ctx?: ConvertContext,
   ): Promise<FileData[]> {
@@ -401,7 +410,7 @@ class FFmpegHandler implements FormatHandler {
       const oldArgs = args ?? [];
       if (stdout.includes(" not divisible by") && !oldArgs.includes("-vf")) {
         const division = stdout.split(" not divisible by ")[1].split(" ")[0];
-        return this.doConvert(
+        return this.doConvertWithArgs(
           inputFiles,
           inputFormat,
           outputFormat,
@@ -418,7 +427,7 @@ class FFmpegHandler implements FormatHandler {
           .split("width and height must be a multiple of ")[1]
           .split(" ")[0]
           .split("")[0];
-        return this.doConvert(
+        return this.doConvertWithArgs(
           inputFiles,
           inputFormat,
           outputFormat,
@@ -433,7 +442,7 @@ class FFmpegHandler implements FormatHandler {
       if (stdout.includes("Valid sizes are") && !oldArgs.includes("-s")) {
         const newSize = stdout.split("Valid sizes are ")[1].split(".")[0].split(" ").pop();
         if (typeof newSize !== "string") throw stdout;
-        return this.doConvert(
+        return this.doConvertWithArgs(
           inputFiles,
           inputFormat,
           outputFormat,
@@ -448,7 +457,7 @@ class FFmpegHandler implements FormatHandler {
         const acceptedBitrate = stdout
           .split("does not support that sample rate, choose from (")[1]
           .split(", ")[0];
-        return this.doConvert(
+        return this.doConvertWithArgs(
           inputFiles,
           inputFormat,
           outputFormat,
@@ -459,7 +468,7 @@ class FFmpegHandler implements FormatHandler {
       // e.g. AMR encoders: "Only 8000Hz sample rate supported"
       const onlyRate = stdout.match(/Only (\d+)Hz sample rate supported/);
       if (onlyRate && !oldArgs.includes("-ar")) {
-        return this.doConvert(
+        return this.doConvertWithArgs(
           inputFiles,
           inputFormat,
           outputFormat,
@@ -468,7 +477,13 @@ class FFmpegHandler implements FormatHandler {
         );
       }
       if (stdout.includes("Only mono supported") && !oldArgs.includes("-ac")) {
-        return this.doConvert(inputFiles, inputFormat, outputFormat, [...oldArgs, "-ac", "1"], ctx);
+        return this.doConvertWithArgs(
+          inputFiles,
+          inputFormat,
+          outputFormat,
+          [...oldArgs, "-ac", "1"],
+          ctx,
+        );
       }
 
       throw stdout;

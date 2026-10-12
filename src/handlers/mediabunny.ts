@@ -75,7 +75,6 @@ class mediabunnyHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
-    _args?: string[],
     ctx?: ConvertContext,
   ): Promise<FileData[]> {
     const outputFiles: FileData[] = [];

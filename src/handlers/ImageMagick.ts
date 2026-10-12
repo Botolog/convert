@@ -89,7 +89,6 @@ class ImageMagickHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
-    args?: string[],
     ctx?: ConvertContext,
   ): Promise<FileData[]> {
     const inputMagickFormat = inputFormat.internal as MagickFormat;

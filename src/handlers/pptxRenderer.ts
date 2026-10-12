@@ -65,7 +65,6 @@ export default class pptxRendererHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
-    _args?: string[],
   ): Promise<FileData[]> {
     if (!this.ready) throw new Error("Handler not initialized.");
     if (inputFormat.internal !== "pptx" || outputFormat.internal !== "pdf") {

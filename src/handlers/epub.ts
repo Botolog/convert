@@ -128,7 +128,6 @@ export default class epubHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
-    _args?: string[],
     ctx?: ConvertContext,
   ): Promise<FileData[]> {
     if (!this.ready) throw new Error("Handler not initialized.");

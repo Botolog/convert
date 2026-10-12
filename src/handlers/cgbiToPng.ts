@@ -162,7 +162,6 @@ class cgbiToPngHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
-    _args?: string[],
   ): Promise<FileData[]> {
     if (inputFormat.internal !== "cgbi-png" || outputFormat.internal !== "png") {
       throw new TypeError(

@@ -123,7 +123,6 @@ class sevenZipHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
-    args?: string[],
     ctx?: ConvertContext,
   ): Promise<FileData[]> {
     const outputFiles: FileData[] = [];

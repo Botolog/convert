@@ -258,7 +258,6 @@ class pandocHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
-    args?: string[],
     ctx?: ConvertContext,
   ): Promise<FileData[]> {
     if (!this.ready || !this.query || !this.convert)

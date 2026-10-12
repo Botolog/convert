@@ -86,7 +86,7 @@ export class Converter {
 
       const outputFiles = (
         await Promise.all([
-          handler.doConvert(inputFiles, inputFormat, path[1].format, undefined, ctx),
+          handler.doConvert(inputFiles, inputFormat, path[1].format, ctx),
           new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
         ])
       )[0];

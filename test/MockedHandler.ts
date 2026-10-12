@@ -20,7 +20,6 @@ export class MockedHandler implements FormatHandler {
     inputFiles: FileData[],
     inputFormat: FileFormat,
     outputFormat: FileFormat,
-    _args?: string[],
   ): Promise<FileData[]> {
     return Promise.resolve(inputFiles);
   }

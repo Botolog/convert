@@ -66,7 +66,7 @@ const dummyHandler: FormatHandler = {
   name: "dummy" as HandlerName,
   ready: true,
   async init() {},
-  async doConvert(_inputFiles, inputFormat, outputFormat, _args) {
+  async doConvert(_inputFiles, inputFormat, outputFormat) {
     return [];
   },
 };

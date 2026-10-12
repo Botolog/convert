@@ -41,7 +41,6 @@ class wavebreakHandler implements FormatHandler {
     inputFiles: FileData[],
     _inputFormat: FileFormat,
     _outputFormat: FileFormat,
-    _args?: string[],
     ctx?: ConvertContext,
   ): Promise<FileData[]> {
     const outputFiles: FileData[] = [];
