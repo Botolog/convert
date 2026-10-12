@@ -115,17 +115,20 @@ bun run build:upload --adopt
 
 ## Toolchains
 
-Compilers and build tools shared between recipes live in `recipe/toolchains/toolchains.config.ts`. They're plain requirements (usually just a pinned binary release), plus an optional `toolchains` list for the toolchains they need themselves.
+Compilers and build tools shared between recipes live in `recipe/toolchains/toolchains.config.ts`. They're plain requirements (usually just a pinned binary release), plus a `version` and an optional `toolchains` list for the toolchains they need themselves.
 
 ```ts
 // recipe/toolchains/toolchains.config.ts
 {
   name: "meson",
+  version: "1.12.1-1",
   url: "https://github.com/mesonbuild/meson/releases/download/1.12.1/meson-1.12.1.tar.gz",
   hash: ["sha256", "ab0a6ca09f8ef70c564c8241fb5a23957886a0b53fb58412b5e07eaf07dba743"],
   toolchains: ["ninja"],
 },
 ```
+
+If your change may make older builds produce different output, bump `version`.
 
 A prebuild with `toolchains: ["meson"]` gets meson and ninja mounted read-only under `$TOOLCHAINS_DIR/<name>`, and their `bin` folder (or the toolchain folder itself) put into `PATH`. If that's not enough, add `recipe/toolchains/<name>/setup.sh`. It gets sourced before the prebuild script, with the toolchain's folder in `$TOOLCHAIN` and a writable `$TOOLCHAIN_BIN` folder that is in `PATH`:
 

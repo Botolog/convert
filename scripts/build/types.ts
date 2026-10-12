@@ -25,7 +25,7 @@ export type SubrecipeRequirement = AssembleRequirement | PrebuildRequirement;
 export type Requirement = SourceRequirement | SubrecipeRequirement;
 export type RequirementsConfig = Requirement[];
 
-export type Toolchain = Requirement & Toolchains;
+export type Toolchain = Requirement & Toolchains & { version: string };
 export type ToolchainsConfig = Toolchain[];
 
 export function hasSource(requirement: Requirement): requirement is SourceRequirement {

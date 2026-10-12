@@ -1,8 +1,8 @@
 import { join } from "path";
 import { TOOLCHAIN_SCOPE } from "./common";
-import type { Toolchain, ToolchainsConfig } from "./types";
+import type { Requirement, Toolchain, ToolchainsConfig } from "./types";
 
-export function toolchainsOf(requirement: Toolchain): string[] {
+export function toolchainsOf(requirement: Requirement & { toolchains?: string[] }): string[] {
   return requirement.toolchains ?? [];
 }
 

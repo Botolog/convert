@@ -11,7 +11,7 @@ export const DOWNLOADS_DIR = join(CACHE_DIR, "downloads");
 const RECIPE_DIR = join(import.meta.dir, "../../recipe");
 const PREBUILT_DIR = join(import.meta.dir, "../../prebuilt");
 
-export const PREBUILD_VERSION = 1;
+export const PREBUILD_VERSION = 2;
 
 export const BASE_DOCKERFILE = join(import.meta.dir, "base.Dockerfile");
 export const PREBUILD_SCRIPT = join(import.meta.dir, "prebuild.sh");
