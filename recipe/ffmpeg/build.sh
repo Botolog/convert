@@ -152,4 +152,5 @@ emconfigure ./configure \
     --enable-libtheora --enable-libvpx --enable-libx264 --enable-libx265 --enable-libvvenc \
     --enable-libaom --enable-libdav1d --enable-libwebp
 emmake make $JOBS ffmpeg-core.js
-cp ffmpeg-core.js ffmpeg-core.wasm ffmpeg-core.d.ts "$OUT_DIR/"
+cp ffmpeg-core.js ffmpeg-core.d.ts "$OUT_DIR/"
+gzip -9n < ffmpeg-core.wasm > "$OUT_DIR/ffmpeg-core.wasm.gz"

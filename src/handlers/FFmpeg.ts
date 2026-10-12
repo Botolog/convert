@@ -2,12 +2,12 @@ import type { FileData, FileFormat, FormatHandler } from "../FormatHandler.ts";
 import type { ConvertContext } from "../ui/ProgressStore.js";
 
 import FFmpeg, { type MainModule as FFmpegModule } from "built/ffmpeg/ffmpeg-core";
-import wasmUrl from "built/ffmpeg/ffmpeg-core.wasm?url";
+import wasmUrl from "built/ffmpeg/ffmpeg-core.wasm.gz?url";
 
 import mime from "mime";
 import normalizeMimeType from "../normalizeMimeType.ts";
 import Formats, { Category, type CategoryType } from "src/Formats.ts";
-import { changeExt, encode } from "src/common/index.ts";
+import { changeExt, encode, fetchGzip } from "src/common/index.ts";
 
 type FFmpegOptions = {
   preRun?: (ffmpeg: FFmpegModule) => void;
@@ -44,10 +44,7 @@ class FFmpegHandler implements FormatHandler {
   async execFFmpeg(args: string[], opts?: FFmpegOptions): Promise<string> {
     // cache it smartly
     if (!this.#module) {
-      // compileStreaming needs the server to send application/wasm, fall back if it doesnt
-      this.#module = WebAssembly.compileStreaming(fetch(wasmUrl)).catch(async () =>
-        WebAssembly.compile(await (await fetch(wasmUrl)).arrayBuffer()),
-      );
+      this.#module = WebAssembly.compileStreaming(fetchGzip(wasmUrl, "application/wasm"));
       this.#module.catch(() => (this.#module = undefined));
     }
 
