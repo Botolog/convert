@@ -14,7 +14,7 @@ export default defineConfig({
   publicDir: "public",
   optimizeDeps: {
     include: ["turbowarp-packager", "turbowarp-unpackager"],
-    exclude: ["@ffmpeg/ffmpeg", "@sqlite.org/sqlite-wasm", "@bokuweb/zstd-wasm", "@yowasp/clang"],
+    exclude: ["@sqlite.org/sqlite-wasm", "@bokuweb/zstd-wasm", "@yowasp/clang"],
   },
   base: "./",
   worker: {

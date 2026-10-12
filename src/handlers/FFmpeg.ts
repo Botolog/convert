@@ -44,7 +44,10 @@ class FFmpegHandler implements FormatHandler {
   async execFFmpeg(args: string[], opts?: FFmpegOptions): Promise<string> {
     // cache it smartly
     if (!this.#module) {
-      this.#module = WebAssembly.compileStreaming(fetch(wasmUrl));
+      // compileStreaming needs the server to send application/wasm, fall back if it doesnt
+      this.#module = WebAssembly.compileStreaming(fetch(wasmUrl)).catch(async () =>
+        WebAssembly.compile(await (await fetch(wasmUrl)).arrayBuffer()),
+      );
       this.#module.catch(() => (this.#module = undefined));
     }
 
@@ -55,6 +58,14 @@ class FFmpegHandler implements FormatHandler {
 
     // for errors that happen before we init
     const { promise: killer, reject: killIt } = Promise.withResolvers<never>();
+
+    const fail = (reason: string) => {
+      try {
+        opts?.abort?.removeEventListener("abort", abort);
+      } catch {}
+      reject(new Error(reason));
+      killIt(new Error(reason));
+    };
 
     const ffmpeg = (await Promise.race([
       killer,
@@ -76,6 +87,7 @@ class FFmpegHandler implements FormatHandler {
         printErr(str: string) {
           stdout += str + "\n";
           opts?.log?.(str, "stderr");
+          if (str.startsWith("worker sent an error!")) fail(str);
         },
         stdin() {
           return null;
@@ -90,11 +102,7 @@ class FFmpegHandler implements FormatHandler {
           );
         },
         onAbort(reason: string) {
-          try {
-            opts?.abort?.removeEventListener("abort", abort);
-          } catch {}
-          reject(new Error(reason));
-          killIt(new Error(reason));
+          fail(reason);
         },
       }),
     ])) as FFmpegModule & { _emscripten_force_exit(status: number): void }; // the .d.ts is wrong
@@ -444,6 +452,20 @@ class FFmpegHandler implements FormatHandler {
           [...oldArgs, "-ar", acceptedBitrate],
           ctx,
         );
+      }
+      // e.g. AMR encoders: "Only 8000Hz sample rate supported"
+      const onlyRate = stdout.match(/Only (\d+)Hz sample rate supported/);
+      if (onlyRate && !oldArgs.includes("-ar")) {
+        return this.doConvert(
+          inputFiles,
+          inputFormat,
+          outputFormat,
+          [...oldArgs, "-ar", onlyRate[1]],
+          ctx,
+        );
+      }
+      if (stdout.includes("Only mono supported") && !oldArgs.includes("-ac")) {
+        return this.doConvert(inputFiles, inputFormat, outputFormat, [...oldArgs, "-ac", "1"], ctx);
       }
 
       throw stdout;
