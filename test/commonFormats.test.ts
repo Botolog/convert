@@ -1,5 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import puppeteer from "puppeteer";
+import { preview } from "vite";
 import type { FileData, FormatHandler, FileFormat, ConvertPathNode } from "../src/FormatHandler.js";
 import Formats from "../src/Formats.js";
 import type { HandlerName } from "../src/handlers/index.js";
@@ -20,17 +21,26 @@ declare global {
   }
 }
 
-// Set up a basic webserver to host the distribution build
-const server = Bun.serve({
-  async fetch(req) {
-    let path = new URL(req.url).pathname.replace("/convert/", "") || "index.html";
-    path = path.replaceAll("..", "");
-    if (path.startsWith("/test/")) path = "../test/resources/" + path.slice(6);
-    const file = Bun.file(`${__dirname}/../dist/${path}`);
-    if (!(await file.exists())) return new Response("Not Found", { status: 404 });
-    return new Response(file);
-  },
-  port: 0,
+// Host the distribution build with vite's preview server (same headers as production),
+// plus the test resources under /test/
+const server = await preview({
+  logLevel: "silent",
+  preview: { port: 0 },
+  plugins: [
+    {
+      name: "test-resources",
+      configurePreviewServer(server) {
+        server.middlewares.use("/test", (req, res, next) => {
+          Bun.file(`${__dirname}/resources/${req.url!.replaceAll("..", "")}`)
+            .bytes()
+            .then(
+              (bytes) => res.end(bytes),
+              () => next(),
+            );
+        });
+      },
+    },
+  ],
 });
 
 // Start puppeteer, wait for ready confirmation
@@ -47,7 +57,7 @@ await Promise.all([
       if (text === "Built initial format list.") resolve(null);
     });
   }),
-  page.goto(`http://localhost:${server.port}/convert/index.html`),
+  page.goto(server.resolvedUrls!.local[0]),
 ]);
 
 console.log("Setup finished.");
@@ -230,5 +240,5 @@ test(
 
 afterAll(async () => {
   await browser.close();
-  server.stop();
+  await server.close();
 });

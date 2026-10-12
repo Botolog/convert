@@ -1,4 +1,5 @@
 import puppeteer from "puppeteer";
+import { preview } from "vite";
 
 const minify = process.argv[3] === "--minify";
 
@@ -9,16 +10,7 @@ if (await outputFile.exists()) {
   await outputFile.delete();
 }
 
-const server = Bun.serve({
-  async fetch(req) {
-    const path = new URL(req.url).pathname.replace("/convert/", "") || "index.html";
-    if (path === "cache.json") return new Response("", { status: 204 }); // to better match the real server
-    const file = Bun.file(`${__dirname}/dist/${path}`.replaceAll("..", ""));
-    if (!(await file.exists())) return new Response("Not Found", { status: 404 });
-    return new Response(file);
-  },
-  port: 0,
-});
+const server = await preview({ logLevel: "silent", preview: { port: 0 } });
 
 const browser = await puppeteer.launch({
   headless: "new",
@@ -35,7 +27,7 @@ await Promise.all([
       if (text === "Built initial format list.") resolve();
     });
   }),
-  page.goto(`http://localhost:${server.port}/convert/index.html`),
+  page.goto(server.resolvedUrls.local[0]),
 ]);
 
 const cacheJSON = await page.evaluate((minify) => {
@@ -48,6 +40,6 @@ const cacheJSON = await page.evaluate((minify) => {
 await Bun.write(outputPath, cacheJSON);
 
 await browser.close();
-server.stop();
+await server.close();
 
 console.log("All done.");
