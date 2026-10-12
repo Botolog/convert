@@ -132,4 +132,12 @@ export default [
     prebuild: "build.sh",
     toolchains: ["emscripten", "meson", "pkgconf"],
   },
+  {
+    name: "clang",
+    url: "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.2/llvm-project-23.1.2.src.tar.xz",
+    hash: ["sha256", "c98bbef08a2b4c2613cd50e9aa9ae7b69b1fe6c16b2c40373bc0ab6116fdf78a"],
+    patches: ["libcxx-wasi.patch"],
+    prebuild: "build.sh",
+    toolchains: ["emscripten", "ninja"],
+  },
 ] satisfies RequirementsConfig;

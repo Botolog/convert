@@ -29,7 +29,6 @@
         "@vexflow-fonts/academico": "^1.0.1",
         "@vexflow-fonts/bravura": "^1.0.2",
         "@xmldom/xmldom": "^0.9.12",
-        "@yowasp/clang": "^22.0.0-git20542-10",
         "bson": "^7.3.3",
         "buffer": "^6.0.3",
         "celaria-formats": "^1.0.2",
@@ -544,8 +543,6 @@
     "@vexflow-fonts/bravura": ["@vexflow-fonts/bravura@1.0.2", "", {}, "sha512-n3KC5hpv1CEoZCbMJ43WeUq71cIIycOUlWe2RU5OOIIKrQ9V8n0KV8v/oX/MDHokTXvUyTo4vJ2dsoMyMBeg4w=="],
 
     "@xmldom/xmldom": ["@xmldom/xmldom@0.9.12", "", {}, "sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A=="],
-
-    "@yowasp/clang": ["@yowasp/clang@22.0.0-git20542-10", "", {}, "sha512-V31/z9GrJECKeACTDUyvg2llbEUiFi3bxtL5HSg7H/6sydSxdI/AoVAD9F5ozrfLjotWl0B9rghR87m+DUM/zg=="],
 
     "abbrev": ["abbrev@4.0.0", "", {}, "sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA=="],
 

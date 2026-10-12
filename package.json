@@ -58,7 +58,6 @@
     "@vexflow-fonts/academico": "^1.0.1",
     "@vexflow-fonts/bravura": "^1.0.2",
     "@xmldom/xmldom": "^0.9.12",
-    "@yowasp/clang": "^22.0.0-git20542-10",
     "bson": "^7.3.3",
     "buffer": "^6.0.3",
     "celaria-formats": "^1.0.2",

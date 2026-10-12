@@ -103,7 +103,7 @@ const HANDLERS = {
   krz: [],
   brarchive: [],
   wasiRunner: [],
-  clangWasi: [],
+  clang: [],
   mcModpack: [],
   azw3: [],
   wavebreak: [],
