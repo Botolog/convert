@@ -96,16 +96,13 @@ export default [
   {
     name: "shtoelf",
     prebuild: "build.sh",
-    image:
-      "gcc:15-bookworm@sha256:9ca91b05c7b07d2979f16413e8b2cd6ec8a7c80ffca4121ccab0aeba33f90460",
   },
   {
     name: "libopenmpt",
     url: "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.8.9+release.makefile.tar.gz",
     hash: ["sha256", "9273b88b67973cc69e54d748ab1b749399d6d07695f1c37d0c59f88b4106074f"],
     prebuild: "build.sh",
-    image:
-      "emscripten/emsdk:6.0.10@sha256:e077d54e2b8970575ebc4f185ac1de0b95c05f2b266134d4ba27449af7aebf65",
+    toolchains: ["emscripten"],
   },
   {
     name: "turbowarp-packager",
@@ -116,8 +113,7 @@ export default [
       "bun.lock": "bun.lock",
     },
     prebuild: "build.sh",
-    image:
-      "oven/bun:latest@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895",
+    toolchains: ["bun"],
     allowNetwork: true,
   },
   {
@@ -126,7 +122,14 @@ export default [
     hash: ["sha256", "9cbde5099c6deb73691b0579063da5827522ccbbcba3f0020fd04e8c8c16c0d4"],
     patches: ["emcc.patch"],
     prebuild: "build.sh",
-    image:
-      "emscripten/emsdk:6.0.10@sha256:e077d54e2b8970575ebc4f185ac1de0b95c05f2b266134d4ba27449af7aebf65",
+    toolchains: ["emscripten"],
+  },
+  {
+    name: "ffmpeg",
+    url: "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n9.0.2.tar.gz",
+    hash: ["sha256", "6e374ed621e48faa40639307dff48ba6fe574a509977956d2cce9669b7cc27e9"],
+    patches: ["make.patch", "allmuxers.patch"],
+    prebuild: "build.sh",
+    toolchains: ["emscripten", "meson", "pkgconf"],
   },
 ] satisfies RequirementsConfig;

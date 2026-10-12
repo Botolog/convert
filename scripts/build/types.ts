@@ -10,17 +10,23 @@ type MaybeSource = Source | { [K in keyof Source]?: never };
 
 type Subrecipe<Script> = { name: string } & Script & MaybeSource;
 
+type Toolchains = { toolchains?: string[] };
+
 export type SourceRequirement = { name: string } & Source;
 export type AssembleRequirement = Subrecipe<{ assemble: string }>;
-export type PrebuildRequirement = Subrecipe<{
-  prebuild: string;
-  image: `${string}@sha256:${string}`;
-  allowNetwork?: boolean;
-}>;
+export type PrebuildRequirement = Subrecipe<
+  {
+    prebuild: string;
+    allowNetwork?: boolean;
+  } & Toolchains
+>;
 
 export type SubrecipeRequirement = AssembleRequirement | PrebuildRequirement;
 export type Requirement = SourceRequirement | SubrecipeRequirement;
 export type RequirementsConfig = Requirement[];
+
+export type Toolchain = Requirement & Toolchains;
+export type ToolchainsConfig = Toolchain[];
 
 export function hasSource(requirement: Requirement): requirement is SourceRequirement {
   return requirement.url !== undefined;

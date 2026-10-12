@@ -1,16 +1,24 @@
 import type { FileData, FileFormat, FormatHandler } from "../FormatHandler.ts";
 import type { ConvertContext } from "../ui/ProgressStore.js";
 
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import type { LogEvent } from "@ffmpeg/ffmpeg";
-import ffmpegCoreUrl from "@ffmpeg/core?url";
-import ffmpegWasmUrl from "@ffmpeg/core/wasm?url";
+import FFmpeg, { type MainModule as FFmpegModule } from "built/ffmpeg/ffmpeg-core";
+import wasmUrl from "built/ffmpeg/ffmpeg-core.wasm?url";
 
 import mime from "mime";
 import normalizeMimeType from "../normalizeMimeType.ts";
 import Formats, { Category, type CategoryType } from "src/Formats.ts";
-import { InitializationError } from "src/errors.ts";
 import { changeExt, encode } from "src/common/index.ts";
+
+type FFmpegOptions = {
+  preRun?: (ffmpeg: FFmpegModule) => void;
+  postRun?: (ffmpeg: FFmpegModule) => void;
+  log?: (str: string, type: "stderr" | "stdout") => void;
+  abort?: AbortSignal;
+};
+
+function durationToSeconds(duration: string): number {
+  return duration.split(":").reduce((total, part) => total * 60 + Number(part), 0);
+}
 
 class FFmpegHandler implements FormatHandler {
   static formatNames: Map<string, string> = new Map([
@@ -31,94 +39,121 @@ class FFmpegHandler implements FormatHandler {
   public supportedFormats: FileFormat[] = [];
   public ready = false;
 
-  #ffmpeg?: FFmpeg;
+  #module?: Promise<WebAssembly.Module>;
 
-  #stdout: string = "";
-  #boundStdoutHandler = (log: LogEvent) => {
-    this.#stdout += log.message + "\n";
-  };
-  clearStdout() {
-    this.#stdout = "";
-  }
-  async getStdout(callback: () => void | Promise<void>) {
-    if (!this.#ffmpeg) return "";
-    this.clearStdout();
-    this.#ffmpeg.on("log", this.#boundStdoutHandler);
-    await callback();
-    this.#ffmpeg.off("log", this.#boundStdoutHandler);
-    return this.#stdout;
-  }
-
-  async loadFFmpeg() {
-    if (!this.#ffmpeg) return;
-    return await this.#ffmpeg.load({
-      coreURL: ffmpegCoreUrl,
-      wasmURL: ffmpegWasmUrl,
-    });
-  }
-  terminateFFmpeg() {
-    if (!this.#ffmpeg) return;
-    this.#ffmpeg.terminate();
-  }
-  async reloadFFmpeg() {
-    if (!this.#ffmpeg) return;
-    this.terminateFFmpeg();
-    this.#ffmpeg = new FFmpeg();
-    await this.loadFFmpeg();
-  }
-  /**
-   * FFmpeg tends to run out of memory (?) with an "index out of bounds"
-   * message sometimes. Other times it just stalls, irrespective of any timeout.
-   *
-   * This wrapper restarts FFmpeg when it crashes with that OOB error, and
-   * forces a Promise-level timeout as a fallback for when it stalls.
-   * @param args CLI arguments, same as in `FFmpeg.exec()`.
-   * @param timeout Max execution time in milliseconds. `-1` for no timeout (default).
-   * @param attempts Amount of times to attempt execution. Default is 1.
-   */
-  async execSafe(args: string[], timeout: number = -1, attempts: number = 1): Promise<void> {
-    if (!this.#ffmpeg) throw new InitializationError("Handler not initialized.");
-    try {
-      if (timeout === -1) {
-        await this.#ffmpeg.exec(args);
-      } else {
-        await Promise.race([
-          this.#ffmpeg.exec(args, timeout),
-          new Promise((_, reject) => setTimeout(reject, timeout)),
-        ]);
-      }
-    } catch (e) {
-      if (!e || (typeof e === "string" && e.includes("out of bounds") && attempts > 1)) {
-        await this.reloadFFmpeg();
-        return await this.execSafe(args, timeout, attempts - 1);
-      }
-      console.error(e);
-      throw e;
+  async execFFmpeg(args: string[], opts?: FFmpegOptions): Promise<string> {
+    // cache it smartly
+    if (!this.#module) {
+      // compileStreaming needs the server to send application/wasm, fall back if it doesnt
+      this.#module = WebAssembly.compileStreaming(fetch(wasmUrl)).catch(async () =>
+        WebAssembly.compile(await (await fetch(wasmUrl)).arrayBuffer()),
+      );
+      this.#module.catch(() => (this.#module = undefined));
     }
+
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
+    const mod = await this.#module;
+    let abort: () => void;
+    let stdout = "";
+
+    // for errors that happen before we init
+    const { promise: killer, reject: killIt } = Promise.withResolvers<never>();
+
+    const fail = (reason: string) => {
+      try {
+        opts?.abort?.removeEventListener("abort", abort);
+      } catch {}
+      reject(new Error(reason));
+      killIt(new Error(reason));
+    };
+
+    const ffmpeg = (await Promise.race([
+      killer,
+      FFmpeg({
+        instantiateWasm(
+          imports: WebAssembly.Imports,
+          ok: (inst: WebAssembly.Instance, mod: WebAssembly.Module) => void,
+        ) {
+          WebAssembly.instantiate(mod, imports).then(
+            (inst) => ok(inst, mod),
+            (e) => killIt(e),
+          );
+          return {};
+        },
+        print(str: string) {
+          stdout += str + "\n";
+          opts?.log?.(str, "stdout");
+        },
+        printErr(str: string) {
+          stdout += str + "\n";
+          opts?.log?.(str, "stderr");
+          if (str.startsWith("worker sent an error!")) fail(str);
+        },
+        stdin() {
+          return null;
+        },
+        onExit() {
+          resolve(
+            (async () => {
+              opts?.postRun?.(ffmpeg);
+              opts?.abort?.removeEventListener("abort", abort);
+              return stdout;
+            })(),
+          );
+        },
+        onAbort(reason: string) {
+          fail(reason);
+        },
+      }),
+    ])) as FFmpegModule & { _emscripten_force_exit(status: number): void }; // the .d.ts is wrong
+
+    abort = () => {
+      try {
+        ffmpeg._emscripten_force_exit(255);
+      } catch {}
+    };
+    opts?.preRun?.(ffmpeg);
+    opts?.abort?.addEventListener("abort", abort);
+    ffmpeg.callMain(args);
+    return promise;
   }
 
   async init() {
-    this.#ffmpeg = new FFmpeg();
-    await this.loadFFmpeg();
+    if (!globalThis.crossOriginIsolated) throw new Error("can't run without multithreading!");
 
-    const getMuxerDetails = async (muxer: string) => {
-      const stdout = await this.getStdout(async () => {
-        await this.execSafe(["-hide_banner", "-h", "muxer=" + muxer], 3000, 5);
-      });
+    const formatLines = (await this.execFFmpeg(["-formats", "-hide_banner"]))
+      .split(" ---\n")[1]
+      .split("\n");
 
-      return {
-        extension: stdout.split("Common extensions: ")[1].split(".")[0].split(",")[0],
-        mimeType: stdout.split("Mime type: ")[1].split("\n")[0].split(".").slice(0, -1).join("."),
-      };
-    };
-
-    const stdout = await this.getStdout(async () => {
-      await this.execSafe(["-formats", "-hide_banner"], 3000, 5);
-    });
-    const lines = stdout.split(" --\n")[1].split("\n");
+    const muxers = new Map(
+      (await this.execFFmpeg(["-h", "allmuxers", "-hide_banner"]))
+        .split(/^Muxer /m)
+        .flatMap((muxer) => {
+          try {
+            return [
+              [
+                muxer.split(" ")[0],
+                {
+                  extension: muxer.split("Common extensions: ")[1].split(".")[0].split(",")[0],
+                  mimeType: muxer
+                    .split("Mime type: ")[1]
+                    .split("\n")[0]
+                    .split(".")
+                    .slice(0, -1)
+                    .join("."),
+                },
+              ],
+            ];
+          } catch {
+            return [];
+          }
+        }),
+    );
 
     this.supportedFormats = [];
-    for (let line of lines) {
+    for (let line of formatLines) {
+      const flags = line.slice(0, 4);
+      line = line.slice(4);
       let len;
       do {
         len = line.length;
@@ -127,11 +162,10 @@ class FFmpegHandler implements FormatHandler {
       line = line.trim();
 
       const parts = line.split(" ");
-      if (parts.length < 2) continue;
+      if (!parts[0]) continue;
 
-      const flags = parts[0];
-      const description = parts.slice(2).join(" ");
-      const formats = parts[1].split(",");
+      const description = parts.slice(1).join(" ");
+      const formats = parts[0].split(",");
 
       if (description.startsWith("piped ")) continue;
       if (description.toLowerCase().includes("subtitle")) continue;
@@ -142,11 +176,11 @@ class FFmpegHandler implements FormatHandler {
         if (primaryFormat === "png") primaryFormat = "apng";
 
         let extension, mimeType;
-        try {
-          const details = await getMuxerDetails(primaryFormat);
+        const details = muxers.get(primaryFormat);
+        if (details) {
           extension = details.extension;
           mimeType = details.mimeType;
-        } catch {
+        } else {
           extension = format;
           mimeType = mime.getType(format) || "video/" + format;
         }
@@ -208,10 +242,6 @@ class FFmpegHandler implements FormatHandler {
     });
 
     const remove = [
-      // AV1 doesn't seem to be included in WASM FFmpeg
-      "avif",
-      // HEVC stalls when attempted
-      "hevc",
       // RTSP stalls when attempted
       "rtsp",
     ];
@@ -251,13 +281,14 @@ class FFmpegHandler implements FormatHandler {
     // Add PNG input explicitly - FFmpeg otherwise treats both PNG and
     // APNG as the same thing.
     this.supportedFormats.push(Formats.PNG.builder("png").from());
+    // the other way for webp
+    this.supportedFormats.push(Formats.WEBP.builder("webp_anim").from());
 
     // Encoding-specific formats
+    // todo: this should be an option, when we get them
     this.supportedFormats.push(Formats.OGG_VORBIS.builder("ogg").to());
 
     this.supportedFormats.push(Formats.OGG_OPUS.builder("ogg").to());
-
-    this.#ffmpeg.terminate();
 
     this.ready = true;
   }
@@ -269,62 +300,25 @@ class FFmpegHandler implements FormatHandler {
     args?: string[],
     ctx?: ConvertContext,
   ): Promise<FileData[]> {
-    if (!this.#ffmpeg) {
-      throw new InitializationError("Handler not initialized.");
-    }
-
     ctx?.throwIfAborted();
-    ctx?.log("Reloading FFmpeg...");
-    await this.reloadFFmpeg();
 
-    if (ctx) {
-      const abortHandler = () => {
-        ctx.log("Abort signal received — terminating FFmpeg.", "error");
-        this.terminateFFmpeg();
-      };
-      ctx.signal.addEventListener("abort", abortHandler, { once: true });
-
-      this.#ffmpeg.on("log", ({ message, type }) => {
-        let level: "log" | "error" | "warn" = "log";
-        if (type === "stderr") level = "warn";
-        ctx.log(message, level);
-      });
-
-      this.#ffmpeg.on("progress", ({ progress, time }) => {
-        if (!Number.isFinite(progress) || progress < 0) {
-          const seconds = time / 1_000_000;
-          ctx.progress(`Transcoding... (${seconds.toFixed(1)}s processed)`, (p) =>
-            Math.min(0.95, p + 0.001),
-          );
-        } else {
-          ctx.progress(`Transcoding...`, Math.max(0, Math.min(0.99, progress)));
-        }
-      });
-    }
-
-    let forceFPS = 0;
-    if (inputFormat.mime === "image/png" || inputFormat.mime === "image/jpeg") {
-      forceFPS = inputFiles.length < 30 ? 1 : 30;
-    }
-
-    let fileIndex = 0;
-    let listString = "";
-    ctx?.log(`Preparing ${inputFiles.length} input files...`);
-    for (const file of inputFiles) {
-      ctx?.throwIfAborted();
-      const entryName = `file_${fileIndex++}.${inputFormat.extension}`;
-      await this.#ffmpeg.writeFile(entryName, new Uint8Array(file.bytes));
-      listString += `file '${entryName}'\n`;
-      if (forceFPS) listString += `duration ${1 / forceFPS}\n`;
-    }
-    await this.#ffmpeg.writeFile("list.txt", encode(listString));
+    const threads = String(Math.min(8, navigator.hardwareConcurrency));
 
     const command = [
       "-hide_banner",
+      "-progress",
+      "pipe:1",
+      "-nostdin",
+      "-stats_period",
+      "0.5",
+      "-filter_threads",
+      threads,
       "-f",
       "concat",
       "-safe",
       "0",
+      "-threads",
+      threads,
       "-i",
       "list.txt",
       "-f",
@@ -344,18 +338,60 @@ class FFmpegHandler implements FormatHandler {
       command.push("-c:a", "libopus");
     }
     if (args) command.push(...args);
+    command.push("-threads", threads);
     command.push("output");
 
-    const stdout = await this.getStdout(async () => {
-      await this.#ffmpeg!.exec(command);
-    });
+    const preRun = (ffmpeg: FFmpegModule) => {
+      let forceFPS = 0;
+      if (inputFormat.mime === "image/png" || inputFormat.mime === "image/jpeg") {
+        forceFPS = inputFiles.length < 30 ? 1 : 30;
+      }
+
+      let fileIndex = 0;
+      let listString = "";
+      ctx?.log(`Preparing ${inputFiles.length} input files...`);
+      for (const file of inputFiles) {
+        ctx?.throwIfAborted();
+        const entryName = `file_${fileIndex++}.${inputFormat.extension}`;
+        ffmpeg.FS.writeFile(entryName, new Uint8Array(file.bytes));
+        listString += `file '${entryName}'\n`;
+        if (forceFPS) listString += `duration ${1 / forceFPS}\n`;
+      }
+      ffmpeg.FS.writeFile("list.txt", encode(listString));
+    };
+
+    let fileData: Uint8Array | string | undefined;
+
+    const postRun = (ffmpeg: FFmpegModule) => {
+      try {
+        fileData = ffmpeg.FS.readFile("output");
+      } catch {} // swallow
+    };
+
+    let duration: number | undefined;
+
+    const log = (str: string, type: "stderr" | "stdout") => {
+      if (!ctx) return;
+      if (type === "stderr") {
+        ctx.log(str, "debug");
+        if (str.includes("Duration:")) {
+          const parsed = str.split("Duration: ").at(1)?.split(",").at(0);
+          if (parsed) duration = durationToSeconds(parsed);
+        }
+      } else if (type === "stdout") {
+        if (str.includes("out_time=")) {
+          const parsed = str.split("=").at(1);
+          if (parsed && duration) {
+            const outTime = durationToSeconds(parsed);
+            ctx.progress("Transcoding...", outTime / duration);
+          }
+        }
+      }
+    };
+
+    const stdout = await this.execFFmpeg(command, { preRun, postRun, log, abort: ctx?.signal });
 
     ctx?.throwIfAborted();
-    ctx?.log("Cleaning up input files...");
-    for (let i = 0; i < fileIndex; i++) {
-      const entryName = `file_${i}.${inputFormat.extension}`;
-      await this.#ffmpeg.deleteFile(entryName);
-    }
 
     if (stdout.includes("Conversion failed!\n")) {
       ctx?.log("Conversion failed, attempting auto-fix...", "error");
@@ -417,6 +453,20 @@ class FFmpegHandler implements FormatHandler {
           ctx,
         );
       }
+      // e.g. AMR encoders: "Only 8000Hz sample rate supported"
+      const onlyRate = stdout.match(/Only (\d+)Hz sample rate supported/);
+      if (onlyRate && !oldArgs.includes("-ar")) {
+        return this.doConvert(
+          inputFiles,
+          inputFormat,
+          outputFormat,
+          [...oldArgs, "-ar", onlyRate[1]],
+          ctx,
+        );
+      }
+      if (stdout.includes("Only mono supported") && !oldArgs.includes("-ac")) {
+        return this.doConvert(inputFiles, inputFormat, outputFormat, [...oldArgs, "-ac", "1"], ctx);
+      }
 
       throw stdout;
     }
@@ -424,13 +474,6 @@ class FFmpegHandler implements FormatHandler {
     let bytes: Uint8Array;
 
     ctx?.log("Reading output file...");
-    let fileData;
-    try {
-      fileData = await this.#ffmpeg.readFile("output");
-    } catch (e) {
-      ctx?.log(`Output file not created: ${e}`, "error");
-      throw `Output file not created: ${e}`;
-    }
 
     if (!fileData || (fileData instanceof Uint8Array && fileData.length === 0)) {
       ctx?.log("FFmpeg failed to produce output file", "error");
@@ -441,9 +484,6 @@ class FFmpegHandler implements FormatHandler {
     } else {
       bytes = new Uint8Array(fileData?.buffer);
     }
-
-    await this.#ffmpeg.deleteFile("output");
-    await this.#ffmpeg.deleteFile("list.txt");
 
     const name = changeExt(inputFiles[0].name, outputFormat.extension);
 

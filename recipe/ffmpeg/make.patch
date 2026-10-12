@@ -1,0 +1,14 @@
+diff --git a/Makefile b/Makefile
+index ca55556..57d27e6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -149,6 +149,9 @@ endif
+ %$(PROGSSUF)_g$(EXESUF): $(FF_DEP_LIBS)
+ 	$(call LINK,$(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $(OBJS-$*) $(FF_EXTRALIBS))
+ 
++ffmpeg-core.js: $(OBJS-ffmpeg) $(FF_DEP_LIBS)
++	$(call LINK,$(LDFLAGS) $(LDFLAGS-ffmpeg) $(LDFLAGS_EMCC) $(LD_O) $(OBJS-ffmpeg) $(FF_EXTRALIBS) $(EXTRALIBS-ffmpeg))
++
+ VERSION_SH  = $(SRC_PATH)/ffbuild/version.sh
+ ifeq ($(VERSION_TRACKING),yes)
+ GIT_LOG     = $(SRC_PATH)/.git/logs/HEAD

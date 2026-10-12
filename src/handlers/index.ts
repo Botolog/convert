@@ -152,6 +152,7 @@ export async function getHandler(name: HandlerName) {
 }
 
 export async function ensureDefinitions(cache: HandlerDefinition[]) {
+  const startTime = performance.now();
   for (let i = cache.length - 1; i >= 0; i--) {
     if (HANDLER_NAMES.includes(cache[i].name)) continue;
     console.error(`Handler "${cache[i].name}" doesnt exist but is in the format cache?!`);
@@ -175,4 +176,6 @@ export async function ensureDefinitions(cache: HandlerDefinition[]) {
     }
   }));
   cache.sort((a, b) => HANDLER_NAMES.indexOf(a.name) - HANDLER_NAMES.indexOf(b.name));
+  const endTime = performance.now();
+  console.log(`Handler defs ready in ${(endTime - startTime).toFixed(2)} ms.`);
 }
