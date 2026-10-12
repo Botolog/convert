@@ -1,1 +1,3 @@
 recipe/** -text
+scripts/build/base.Dockerfile -text
+scripts/build/prebuild.sh -text

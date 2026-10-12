@@ -304,6 +304,13 @@ class FFmpegHandler implements FormatHandler {
 
     const threads = String(Math.min(8, navigator.hardwareConcurrency));
 
+    let forceFPS = 0;
+    if (inputFormat.mime === "image/png" || inputFormat.mime === "image/jpeg") {
+      forceFPS = inputFiles.length < 30 ? 1 : 30;
+    }
+
+    const direct = inputFiles.length === 1 && !forceFPS;
+
     const command = [
       "-hide_banner",
       "-progress",
@@ -313,14 +320,11 @@ class FFmpegHandler implements FormatHandler {
       "0.5",
       "-filter_threads",
       threads,
-      "-f",
-      "concat",
-      "-safe",
-      "0",
+      ...(direct ? [] : ["-f", "concat", "-safe", "0"]),
       "-threads",
       threads,
       "-i",
-      "list.txt",
+      direct ? `file_0.${inputFormat.extension}` : "list.txt",
       "-f",
       outputFormat.internal,
     ];
@@ -342,11 +346,6 @@ class FFmpegHandler implements FormatHandler {
     command.push("output");
 
     const preRun = (ffmpeg: FFmpegModule) => {
-      let forceFPS = 0;
-      if (inputFormat.mime === "image/png" || inputFormat.mime === "image/jpeg") {
-        forceFPS = inputFiles.length < 30 ? 1 : 30;
-      }
-
       let fileIndex = 0;
       let listString = "";
       ctx?.log(`Preparing ${inputFiles.length} input files...`);
@@ -380,10 +379,14 @@ class FFmpegHandler implements FormatHandler {
         }
       } else if (type === "stdout") {
         if (str.includes("out_time=")) {
-          const parsed = str.split("=").at(1);
-          if (parsed && duration) {
-            const outTime = durationToSeconds(parsed);
+          const outTime = durationToSeconds(str.split("=").at(1) ?? "");
+          if (!Number.isFinite(outTime)) return;
+          if (duration && Number.isFinite(duration)) {
             ctx.progress("Transcoding...", outTime / duration);
+          } else {
+            ctx.progress(`Transcoding... (${outTime.toFixed(1)}s processed)`, (p) =>
+              Math.min(0.95, p + 0.001),
+            );
           }
         }
       }
