@@ -236,6 +236,11 @@ const Formats = {
   GLB: new FormatDefinition("GL Transmission Format Binary", "glb", "glb", "model/gltf-binary", Category.MODEL),
   GLTF: new FormatDefinition("GL Transmission Format", "gltf", "gltf", "model/gltf+json", Category.MODEL),
   OBJ: new FormatDefinition("Wavefront OBJ", "obj", "obj", "model/obj", Category.MODEL),
+  STL: new FormatDefinition("Stereolithography", "stl", "stl", "model/stl", Category.MODEL),
+  PLY: new FormatDefinition("Polygon File Format", "ply", "ply", "model/x-ply", Category.MODEL),
+  FBX: new FormatDefinition("Autodesk FBX", "fbx", "fbx", "application/vnd.autodesk.fbx", Category.MODEL),
+  DAE: new FormatDefinition("COLLADA", "dae", "dae", "model/vnd.collada+xml", Category.MODEL),
+  THREEMF: new FormatDefinition("3D Manufacturing Format", "3mf", "3mf", "model/3mf", Category.MODEL),
   BBMODEL: new FormatDefinition("Blockbench Project", "bbmodel", "bbmodel", "application/json", Category.MODEL),
 
   // databases
