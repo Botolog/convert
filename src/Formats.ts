@@ -74,6 +74,7 @@ const Formats = {
 
   // vector
   SVG: new FormatDefinition("Scalable Vector Graphics", "svg", "svg", "image/svg+xml", [Category.IMAGE, Category.VECTOR, Category.DOCUMENT]),
+  VECTORDRAWABLE: new FormatDefinition("Android Vector Drawable", "vectordrawable", "xml", "application/xml", [Category.IMAGE, Category.VECTOR]),
 
   // video
   MP4: new FormatDefinition("MPEG-4 Part 14", "mp4", "mp4", "video/mp4", Category.VIDEO),
