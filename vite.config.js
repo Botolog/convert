@@ -9,7 +9,7 @@ const isolationHeaders = {
 };
 
 export default defineConfig({
-  server: { headers: isolationHeaders },
+  server: { headers: isolationHeaders, watch: { ignored: ["**/.cache/**"] } },
   preview: { headers: isolationHeaders },
   publicDir: "public",
   optimizeDeps: {
