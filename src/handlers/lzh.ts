@@ -35,7 +35,6 @@ export class lzhHandler implements FormatHandler {
   public supportedFormats = [
     Formats.LZH.builder("lzh").lossless().fromTo(),
     Formats.ZIP.builder("zip").lossless().fromTo(),
-    Formats.JSON.builder("json").to(),
   ];
   public ready = false;
 
@@ -54,41 +53,7 @@ export class lzhHandler implements FormatHandler {
 
     const outputFiles: FileData[] = [];
 
-    // Convert LZH/LHA to JSON (archive listing with data)
-    if (inputFormat.internal === "lzh" && outputFormat.internal === "json") {
-      for (const inputFile of inputFiles) {
-        const decoder = new LZHDecoder(inputFile.bytes);
-        const extractedFiles = decoder.extractAll();
-
-        const archiveInfo = {
-          archiveName: sanitizeString(inputFile.name),
-          fileCount: extractedFiles.length,
-          totalOriginalSize: extractedFiles.reduce((sum, f) => sum + f.originalSize, 0),
-          totalCompressedSize: extractedFiles.reduce((sum, f) => sum + f.compressedSize, 0),
-          files: extractedFiles.map((file) => ({
-            filename: sanitizeString(file.filename),
-            originalSize: file.originalSize,
-            compressedSize: file.compressedSize,
-            timestamp: file.timestamp.toISOString(),
-            compressionMethod: sanitizeString(file.method),
-            crc: `0x${file.crc.toString(16).toUpperCase().padStart(4, "0")}`,
-            compressionRatio:
-              file.compressedSize > 0 && file.originalSize > 0
-                ? ((1 - file.compressedSize / file.originalSize) * 100).toFixed(2) + "%"
-                : "0%",
-            isDirectory: file.method === "-lhd-" || file.filename.endsWith("/"),
-            data: bytesToBase64(file.data),
-          })),
-        };
-
-        const jsonStr = JSON.stringify(archiveInfo, null, 2);
-
-        outputFiles.push({
-          name: changeExt(inputFile.name, "json"),
-          bytes: encode(jsonStr),
-        });
-      }
-    } else if (inputFormat.internal === "lzh" && outputFormat.internal === "zip") {
+    if (inputFormat.internal === "lzh" && outputFormat.internal === "zip") {
       // Convert to ZIP
       for (const inputFile of inputFiles) {
         const decoder = new LZHDecoder(inputFile.bytes);
@@ -179,8 +144,8 @@ export class lzhHandler implements FormatHandler {
 }
 
 // Packs any input(s) into a singular LZH file. Separated for tree purposes.
-export class lzh2Handler implements FormatHandler {
-  public readonly name = "lzh2";
+export class lzhAnyHandler implements FormatHandler {
+  public readonly name = "lzhAny";
   public supportedFormats = [Formats.LZH.builder("lzh").lossless().to()];
   public supportAnyInput = true;
   public ready = false;

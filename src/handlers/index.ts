@@ -59,7 +59,7 @@ const HANDLERS = {
   midiCodec: ["./midi.ts", "midiCodecHandler"],
   midiSynth: ["./midi.ts", "midiSynthHandler"],
   lzh: ["./lzh.ts", "lzhHandler"],
-  lzh2: ["./lzh.ts", "lzh2Handler"],
+  lzhAny: ["./lzh.ts", "lzhAnyHandler"],
   wad: [],
   txtToInfiniteCraft: ["./infiniteCraft.ts", "txtToInfiniteCraftHandler"],
   infiniteCraftToJson: ["./infiniteCraft.ts", "infiniteCraftToJsonHandler"],
