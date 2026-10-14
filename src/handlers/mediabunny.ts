@@ -29,6 +29,7 @@ class mediabunnyHandler implements FormatHandler {
   public readonly name = "mediabunny";
   public supportedFormats: FileFormat[] = [];
   public ready = false;
+  public abortable = true;
 
   async init() {
     this.supportedFormats = [];

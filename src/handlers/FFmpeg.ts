@@ -38,6 +38,7 @@ class FFmpegHandler implements FormatHandler {
   public readonly name = "FFmpeg";
   public supportedFormats: FileFormat[] = [];
   public ready = false;
+  public abortable = true;
 
   #module?: Promise<WebAssembly.Module>;
 

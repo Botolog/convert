@@ -4,7 +4,7 @@ import {
   type ConvertPathNode,
   type HandlerDefinition,
 } from "./FormatHandler.js";
-import { ensureDefinitions } from "./handlers/index.js";
+import { ensureDefinitions, type HandlerName } from "./handlers/index.js";
 import * as comlink from "comlink";
 import type { TraversionGraph } from "./TraversionGraph.js";
 import TraversionGraphWorker from "./TraversionGraph.js?worker";
@@ -31,14 +31,43 @@ export function goToUploadHome(): void {
 
 window.handlerDefs = [];
 
-const RemoteConverter = comlink.wrap<typeof Converter>(new ConverterWorker());
 const RemoteTraversionGraph = comlink.wrap<typeof TraversionGraph>(new TraversionGraphWorker());
 
 // i dont expect any other pages to exist so location.href works
 window.baseUrl = new URL(import.meta.env.BASE_URL, location.href).href;
-const converterWorker = await new RemoteConverter("web_worker", window.baseUrl);
 const converterMain = new Converter("main_thread", window.baseUrl);
 window.traversionGraph = await new RemoteTraversionGraph();
+
+type ConverterWorkerEntry = { worker: Worker; converter: comlink.Remote<Converter>; name: string };
+const converterWorkers: Map<HandlerName, Promise<ConverterWorkerEntry>> = new Map();
+
+async function getOrCreateConversionWorker(handler: HandlerName) {
+  let promise = converterWorkers.get(handler);
+  if (promise) return promise;
+  promise = (async () => {
+    if (!window.baseUrl) throw new Error("must have baseurl on window!");
+    if (!window.handlerDefs.length) throw new Error("handler defs must be initialized!");
+
+    const worker = new ConverterWorker();
+    const RemoteConverter = comlink.wrap<typeof Converter>(worker);
+    const name = `web_worker_${handler}`;
+    const converter = await new RemoteConverter(name, window.baseUrl);
+    await converter.init(window.handlerDefs);
+    return { converter, worker, name };
+  })();
+  promise.catch(() => converterWorkers.delete(handler));
+  converterWorkers.set(handler, promise);
+  return promise;
+}
+
+async function tryKillConversionWorker(handler: HandlerName) {
+  const entry = await converterWorkers.get(handler);
+  if (!entry) return false;
+  converterWorkers.delete(handler);
+  entry.worker.terminate();
+  console.log(`Terminated ${entry.name}.`);
+  return true;
+}
 
 window.printSupportedFormatCache = () => {
   return JSON.stringify(window.handlerDefs, null, 2);
@@ -64,7 +93,6 @@ async function buildOptionList() {
   await window.traversionGraph.init(window.handlerDefs);
 
   converterMain.init(window.handlerDefs);
-  await converterWorker.init(window.handlerDefs);
 
   LoadingToolsText.value = undefined;
 }
@@ -115,37 +143,67 @@ async function attemptConvertPath(
     abort.addEventListener("abort", sendAbort, { once: true });
 
     try {
-      const converter = handlerDef.offload !== false ? converterWorker : converterMain;
+      const converter =
+        handlerDef.offload !== false
+          ? (await getOrCreateConversionWorker(handlerDef.name)).converter
+          : converterMain;
 
       console.log(`Chose converter ${await converter.name} for ${handlerDef.name}`);
 
       abort.throwIfAborted();
 
-      // this is annoying
-      const restore = originalFiles.map((original) => ({
-        original,
-        inputIndex: files.findIndex((file) => file.bytes.buffer === original.bytes.buffer),
-        offset: original.bytes.byteOffset,
-        length: original.bytes.byteLength,
-      }));
+      const convert = (files: FileData[]) =>
+        converter.doConvert(
+          handlerDef,
+          [path[i], path[i + 1]],
+          comlink.transfer(files, [...new Set([...files].map((file) => file.bytes.buffer))]),
+          { currentStep: i + 1, totalSteps },
+          comlink.proxy(ProgressStore),
+          comlink.transfer(channel.port2, [channel.port2]),
+        );
 
-      const result = await converter.doConvert(
-        handlerDef,
-        [path[i], path[i + 1]],
-        comlink.transfer(files, [...new Set([...files].map((file) => file.bytes.buffer))]),
-        { currentStep: i + 1, totalSteps },
-        comlink.proxy(ProgressStore),
-        comlink.transfer(channel.port2, [channel.port2]),
-      );
+      let result;
+      if (handlerDef.abortable) {
+        // lend
+        // this is annoying
+        const restore = originalFiles.map((original) => ({
+          original,
+          inputIndex: files.findIndex((file) => file.bytes.buffer === original.bytes.buffer),
+          offset: original.bytes.byteOffset,
+          length: original.bytes.byteLength,
+        }));
 
-      for (const { original, inputIndex, offset, length } of restore) {
-        if (inputIndex !== -1) {
-          // we dont want handlers messing with it but we need to mess with it
-          (original as { bytes: Uint8Array }).bytes = new Uint8Array(
-            result.inputFiles[inputIndex].bytes.buffer,
-            offset,
-            length,
-          );
+        result = await convert(files);
+
+        for (const { original, inputIndex, offset, length } of restore) {
+          if (inputIndex !== -1) {
+            // we dont want handlers messing with it but we need to mess with it
+            (original as { bytes: Uint8Array }).bytes = new Uint8Array(
+              result.inputFiles[inputIndex].bytes.buffer,
+              offset,
+              length,
+            );
+          }
+        }
+      } else {
+        // copy
+        if (files.some((f) => originalFiles.some((o) => o.bytes.buffer === f.bytes.buffer)))
+          files = structuredClone(files);
+
+        const { promise: aborter, resolve } = Promise.withResolvers<"aborted">();
+
+        const abortAborter = () => resolve("aborted");
+        abort.addEventListener("abort", abortAborter, { once: true });
+
+        result = await Promise.race([convert(files), aborter]);
+
+        abort.removeEventListener("abort", abortAborter);
+
+        if (result === "aborted") {
+          // if its on a worker, kill it. otherwise, rekt
+          tryKillConversionWorker(handlerDef.name);
+
+          throw new DOMException("This operation was aborted", "AbortError");
         }
       }
 

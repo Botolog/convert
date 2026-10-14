@@ -19,6 +19,7 @@ class ImageMagickHandler implements FormatHandler {
   public readonly name = "ImageMagick";
   public supportedFormats: FileFormat[] = [];
   public ready = false;
+  public abortable = true;
 
   async init() {
     const wasmBuffer = await fetch(magickWasmUrl).then((r) => r.arrayBuffer());
