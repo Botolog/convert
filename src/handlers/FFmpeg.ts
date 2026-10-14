@@ -324,9 +324,10 @@ class FFmpegHandler implements FormatHandler {
 
     const command = [
       "-hide_banner",
+      "-nostdin",
+      "-nostats",
       "-progress",
       "pipe:1",
-      "-nostdin",
       "-stats_period",
       "0.5",
       "-filter_threads",
