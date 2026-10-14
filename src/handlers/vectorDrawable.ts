@@ -17,7 +17,7 @@ type XmlElement = NonNullable<
 >;
 
 function vdAttr(el: XmlElement, name: string): string | undefined {
-  const namespaced = el.getAttribute(`android:${name}`);
+  const namespaced = el.getAttributeNS(ANDROID_NS, name) || el.getAttribute(`android:${name}`);
   if (namespaced !== null && namespaced !== "") return namespaced;
   const plain = el.getAttribute(name);
   if (plain !== null && plain !== "") return plain;
@@ -125,6 +125,14 @@ interface VdPaint {
 /// optional `fillAlpha`/`strokeAlpha`. `none` maps to no color.
 function svgColorToVd(color: string | undefined, opacity: number): VdPaint {
   if (color === undefined || color === "none") return {};
+  if (color.toLowerCase() === "currentcolor") color = "#000000";
+  const rgbMatch = color.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*\)$/i);
+  if (rgbMatch) {
+    color = `#${rgbMatch
+      .slice(1, 4)
+      .map((n) => Math.min(255, Number(n)).toString(16).padStart(2, "0"))
+      .join("")}`;
+  }
   const hexMatch = color.match(/^#([0-9a-fA-F]+)$/);
   if (hexMatch) {
     const hex = hexMatch[1];
@@ -143,8 +151,10 @@ function svgColorToVd(color: string | undefined, opacity: number): VdPaint {
       return { color: `#${opacityToAlphaByte(combined)}${hex.slice(0, 6)}` };
     }
   }
-  // Named colors, rgb()/hsl() functions and @color/?attr references that
-  // survived a round-trip are kept verbatim; opacity goes to a *_alpha attr.
+  // @color/?attr references that survived a round-trip are kept verbatim.
+  // Anything else (named colors, url(#gradient), hsl()) is not a valid
+  // Android color and is dropped.
+  if (!color.startsWith("@") && !color.startsWith("?")) return {};
   return opacity >= 0.9999 ? { color } : { color, alpha: opacity };
 }
 
@@ -200,16 +210,16 @@ function convertVdPath(path: XmlElement, indent: string): string {
     attrs.push(`fill-rule="evenodd"`);
   }
 
+  // Android's default strokeWidth is 0 (no stroke), SVG's is 1.
   const strokeRaw = vdAttr(path, "strokeColor");
   const strokeAlpha = parseNum(vdAttr(path, "strokeAlpha"), 1);
-  if (strokeRaw !== undefined) {
+  const strokeWidth = parseNum(vdAttr(path, "strokeWidth"), 0);
+  if (strokeRaw !== undefined && strokeWidth > 0) {
     const { color, opacity } = vdColorToSvg(strokeRaw, strokeAlpha);
-    attrs.push(`stroke="${esc(color)}"`);
+    attrs.push(`stroke="${esc(color)}"`, `stroke-width="${fmtNum(strokeWidth)}"`);
     if (opacity < 0.9999) attrs.push(`stroke-opacity="${fmtOpacity(opacity)}"`);
   }
 
-  const strokeWidth = vdAttr(path, "strokeWidth");
-  if (strokeWidth !== undefined) attrs.push(`stroke-width="${esc(strokeWidth)}"`);
   const lineCap = vdAttr(path, "strokeLineCap");
   if (lineCap !== undefined) attrs.push(`stroke-linecap="${esc(lineCap)}"`);
   const lineJoin = vdAttr(path, "strokeLineJoin");
@@ -253,45 +263,40 @@ function convertVdGroup(group: XmlElement, indent: string): string {
     (c) => localName(c) === "group" || localName(c) === "path" || localName(c) === "clip-path",
   );
 
-  // VectorDrawable clip-paths clip the rest of their group; map them to an
-  // SVG clipPath referenced from the group.
-  const clips = children.filter((c) => localName(c) === "clip-path");
-  let clipAttr = "";
-  if (clips.length > 0) {
+  // VectorDrawable clip-paths clip the rest of their group and intersect
+  // with each other; map each to an SVG clipPath on its own nested <g>.
+  const clipIds: string[] = [];
+  for (const clip of children.filter((c) => localName(c) === "clip-path")) {
+    const d = vdAttr(clip, "pathData");
+    if (d === undefined) continue;
     const id = `vd-clip-${clipIdCounter++}`;
-    const clipPaths = clips
-      .map((c) => vdAttr(c, "pathData"))
-      .filter((d): d is string => d !== undefined)
-      .map((d) => `${indent}    <path d="${esc(d)}"/>`)
-      .join("\n");
-    if (clipPaths) {
-      lines.push(`${indent}<clipPath id="${id}">`);
-      lines.push(clipPaths);
-      lines.push(`${indent}</clipPath>`);
-      clipAttr = ` clip-path="url(#${id})"`;
-    }
+    lines.push(`${indent}<clipPath id="${id}"><path d="${esc(d)}"/></clipPath>`);
+    clipIds.push(id);
   }
 
   const transform = vdGroupTransform(group);
   const name = vdAttr(group, "name");
   const openAttrs =
     (name !== undefined ? ` id="${esc(name)}"` : "") +
-    (transform ? ` transform="${transform}"` : "") +
-    clipAttr;
+    (transform ? ` transform="${transform}"` : "");
 
   const inner: string[] = [];
   for (const child of children) {
     const tag = localName(child);
-    if (tag === "group") inner.push(convertVdGroup(child, `${indent}  `));
-    else if (tag === "path") {
-      const converted = convertVdPath(child, `${indent}  `);
-      if (converted) inner.push(converted);
-    }
+    const converted =
+      tag === "group"
+        ? convertVdGroup(child, `${indent}  `)
+        : tag === "path"
+          ? convertVdPath(child, `${indent}  `)
+          : "";
+    if (converted) inner.push(converted);
   }
 
-  if (inner.length === 0 && lines.length === 0) return "";
+  if (inner.length === 0) return "";
   lines.push(`${indent}<g${openAttrs}>`);
+  for (const id of clipIds) lines.push(`${indent}<g clip-path="url(#${id})">`);
   lines.push(...inner);
+  for (const _ of clipIds) lines.push(`${indent}</g>`);
   lines.push(`${indent}</g>`);
   return lines.join("\n");
 }
@@ -311,19 +316,13 @@ function vectorDrawableToSvg(text: string): string {
   const width = parseNum(vdAttr(vector, "width"), viewportWidth);
   const height = parseNum(vdAttr(vector, "height"), viewportHeight);
 
+  const alpha = parseNum(vdAttr(vector, "alpha"), 1);
   const lines: string[] = [
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${fmtNum(width)}" height="${fmtNum(height)}" viewBox="0 0 ${fmtNum(viewportWidth)} ${fmtNum(viewportHeight)}">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${fmtNum(width)}" height="${fmtNum(height)}" viewBox="0 0 ${fmtNum(viewportWidth)} ${fmtNum(viewportHeight)}"${alpha < 0.9999 ? ` opacity="${fmtOpacity(alpha)}"` : ""}>`,
   ];
-  for (const child of childElements(vector)) {
-    const tag = localName(child);
-    if (tag === "group") {
-      const converted = convertVdGroup(child, "  ");
-      if (converted) lines.push(converted);
-    } else if (tag === "path") {
-      const converted = convertVdPath(child, "  ");
-      if (converted) lines.push(converted);
-    }
-  }
+  // The <vector> root behaves like a group (it can hold clip-paths too).
+  const content = convertVdGroup(vector, "  ");
+  if (content) lines.push(content);
   lines.push(`</svg>`);
   return `${lines.join("\n")}\n`;
 }
@@ -352,13 +351,8 @@ function svgTransformToGroups(transform: string): VdGroupAttrs[] {
   while ((match = funcPattern.exec(transform)) !== null) {
     consumed = true;
     const kind = match[1].toLowerCase();
-    const args = match[2]
-      .split(/[\s,]+/)
-      .filter((s) => s.length > 0)
-      .map(Number);
-    if (args.some((a) => !Number.isFinite(a))) {
-      throw new Error(`Unsupported SVG transform: "${transform}".`);
-    }
+    // Matches numbers even without separators, e.g. "10-5" or "1.5.5".
+    const args = (match[2].match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi) ?? []).map(Number);
     if (kind === "translate") {
       groups.push({ translateX: args[0] ?? 0, translateY: args[1] ?? 0 });
     } else if (kind === "scale") {
@@ -371,13 +365,19 @@ function svgTransformToGroups(transform: string): VdGroupAttrs[] {
     } else if (kind === "matrix") {
       if (args.length !== 6) throw new Error(`Unsupported SVG transform: "${transform}".`);
       const [a, b, c, d, e, f] = args;
-      // Only diagonal matrices (scale + translate) map onto VectorDrawables.
-      if (b === 0 && c === 0) {
-        if (e !== 0 || f !== 0) groups.push({ translateX: e, translateY: f });
-        if (a !== 1 || d !== 1) groups.push({ scaleX: a, scaleY: d });
-      } else {
+      // A group applies translate * rotate * scale, so any matrix without
+      // skew (orthogonal columns) decomposes into a single group.
+      const scaleX = Math.hypot(a, b);
+      if (scaleX === 0 || Math.abs(a * c + b * d) > 1e-6) {
         throw new Error(`Unsupported SVG transform: "${transform}".`);
       }
+      groups.push({
+        translateX: e,
+        translateY: f,
+        rotation: (Math.atan2(b, a) * 180) / Math.PI,
+        scaleX,
+        scaleY: (a * d - b * c) / scaleX,
+      });
     } else {
       throw new Error(`Unsupported SVG transform: "${transform}".`);
     }
@@ -415,115 +415,190 @@ function openVdGroup(attrs: VdGroupAttrs, name: string | undefined, indent: stri
   return `${indent}<group${parts.length > 0 ? ` ${parts.join(" ")}` : ""}>`;
 }
 
+// Presentation attributes that SVG inherits from ancestors.
+const INHERITED_PAINT = [
+  "fill",
+  "fill-opacity",
+  "fill-rule",
+  "stroke",
+  "stroke-opacity",
+  "stroke-width",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-miterlimit",
+];
+
+function inheritPaint(
+  el: XmlElement,
+  style: Record<string, string>,
+  parent: Record<string, string>,
+) {
+  const paint = { ...parent };
+  for (const name of INHERITED_PAINT) {
+    const value = svgAttr(el, style, name);
+    if (value !== undefined && value !== "inherit") paint[name] = value;
+  }
+  return paint;
+}
+
+/// Converts basic SVG shapes into equivalent path data.
+function shapeToPathData(el: XmlElement, tag: string): string | undefined {
+  const n = (name: string) => parseNum(el.getAttribute(name) ?? undefined, 0);
+  if (tag === "path") return el.getAttribute("d") || undefined;
+  if (tag === "rect") {
+    const [x, y, w, h] = [n("x"), n("y"), n("width"), n("height")];
+    if (!(w > 0) || !(h > 0)) return undefined;
+    let rx = el.hasAttribute("rx") ? n("rx") : n("ry");
+    let ry = el.hasAttribute("ry") ? n("ry") : rx;
+    rx = Math.min(Math.max(rx, 0), w / 2);
+    ry = Math.min(Math.max(ry, 0), h / 2);
+    if (rx === 0 || ry === 0) return `M${x} ${y}h${w}v${h}h${-w}Z`;
+    const a = (dx: number, dy: number) => `a${rx} ${ry} 0 0 1 ${dx} ${dy}`;
+    return (
+      `M${x + rx} ${y}h${w - 2 * rx}${a(rx, ry)}v${h - 2 * ry}${a(-rx, ry)}` +
+      `h${2 * rx - w}${a(-rx, -ry)}v${2 * ry - h}${a(rx, -ry)}Z`
+    );
+  }
+  if (tag === "circle" || tag === "ellipse") {
+    const rx = tag === "circle" ? n("r") : n("rx");
+    const ry = tag === "circle" ? rx : n("ry");
+    if (!(rx > 0) || !(ry > 0)) return undefined;
+    const [cx, cy] = [n("cx"), n("cy")];
+    return `M${cx - rx} ${cy}a${rx} ${ry} 0 1 0 ${2 * rx} 0a${rx} ${ry} 0 1 0 ${-2 * rx} 0Z`;
+  }
+  if (tag === "line") return `M${n("x1")} ${n("y1")}L${n("x2")} ${n("y2")}`;
+  if (tag === "polyline" || tag === "polygon") {
+    const points = el.getAttribute("points")?.trim();
+    if (!points) return undefined;
+    return `M${points}${tag === "polygon" ? "Z" : ""}`;
+  }
+  return undefined;
+}
+
 function convertSvgPath(
   path: XmlElement,
-  style: Record<string, string>,
-  inheritedOpacity: number,
+  d: string,
+  paint: Record<string, string>,
+  opacity: number,
   indent: string,
 ): string {
-  const d = svgAttr(path, style, "d");
-  if (d === undefined) return "";
-
-  const elementOpacity = parseNum(svgAttr(path, style, "opacity"), 1);
-  const opacity = inheritedOpacity * elementOpacity;
-
   const attrs: string[] = [`android:pathData="${esc(d)}"`];
   const name = path.getAttribute("id");
   if (name !== null && name !== "") attrs.unshift(`android:name="${esc(name)}"`);
 
-  const fillRaw = svgAttr(path, style, "fill");
-  const fillOpacity = parseNum(svgAttr(path, style, "fill-opacity"), 1) * opacity;
-  if (fillRaw !== undefined && fillRaw !== "none") {
-    const { color, alpha } = svgColorToVd(fillRaw, fillOpacity);
-    if (color !== undefined) attrs.push(`android:fillColor="${esc(color)}"`);
-    if (alpha !== undefined && alpha < 0.9999) {
-      attrs.push(`android:fillAlpha="${fmtOpacity(alpha)}"`);
+  // SVG fills with black by default; Android leaves paths unfilled.
+  const fillOpacity = parseNum(paint["fill-opacity"], 1) * opacity;
+  const fill = svgColorToVd(paint.fill ?? "#000000", fillOpacity);
+  if (fill.color !== undefined) {
+    attrs.push(`android:fillColor="${esc(fill.color)}"`);
+    if (fill.alpha !== undefined && fill.alpha < 0.9999) {
+      attrs.push(`android:fillAlpha="${fmtOpacity(fill.alpha)}"`);
     }
   }
 
-  const fillRule = svgAttr(path, style, "fill-rule") ?? svgAttr(path, style, "fillRule");
-  if (fillRule !== undefined && fillRule.toLowerCase() === "evenodd") {
+  if (paint["fill-rule"]?.toLowerCase() === "evenodd") {
     attrs.push(`android:fillType="evenOdd"`);
   }
 
-  const strokeRaw = svgAttr(path, style, "stroke");
-  const strokeOpacity = parseNum(svgAttr(path, style, "stroke-opacity"), 1) * opacity;
-  if (strokeRaw !== undefined && strokeRaw !== "none") {
-    const { color, alpha } = svgColorToVd(strokeRaw, strokeOpacity);
-    if (color !== undefined) attrs.push(`android:strokeColor="${esc(color)}"`);
-    if (alpha !== undefined && alpha < 0.9999) {
-      attrs.push(`android:strokeAlpha="${fmtOpacity(alpha)}"`);
+  // SVG's default stroke-width is 1; Android's is 0.
+  const strokeOpacity = parseNum(paint["stroke-opacity"], 1) * opacity;
+  const stroke = svgColorToVd(paint.stroke, strokeOpacity);
+  const strokeWidth = parseNum(paint["stroke-width"], 1);
+  if (stroke.color !== undefined && strokeWidth > 0) {
+    attrs.push(`android:strokeColor="${esc(stroke.color)}"`);
+    if (stroke.alpha !== undefined && stroke.alpha < 0.9999) {
+      attrs.push(`android:strokeAlpha="${fmtOpacity(stroke.alpha)}"`);
+    }
+    attrs.push(`android:strokeWidth="${fmtNum(strokeWidth)}"`);
+    const lineCap = paint["stroke-linecap"];
+    if (lineCap !== undefined) attrs.push(`android:strokeLineCap="${esc(lineCap)}"`);
+    const lineJoin = paint["stroke-linejoin"];
+    if (lineJoin !== undefined) attrs.push(`android:strokeLineJoin="${esc(lineJoin)}"`);
+    const miterLimit = paint["stroke-miterlimit"];
+    if (miterLimit !== undefined) {
+      attrs.push(`android:strokeMiterLimit="${fmtNum(parseNum(miterLimit, 4))}"`);
     }
   }
-  const strokeWidth = svgAttr(path, style, "stroke-width");
-  if (strokeWidth !== undefined) attrs.push(`android:strokeWidth="${esc(strokeWidth)}"`);
-  const lineCap = svgAttr(path, style, "stroke-linecap");
-  if (lineCap !== undefined) attrs.push(`android:strokeLineCap="${esc(lineCap)}"`);
-  const lineJoin = svgAttr(path, style, "stroke-linejoin");
-  if (lineJoin !== undefined) attrs.push(`android:strokeLineJoin="${esc(lineJoin)}"`);
-  const miterLimit = svgAttr(path, style, "stroke-miterlimit");
-  if (miterLimit !== undefined) attrs.push(`android:strokeMiterLimit="${esc(miterLimit)}"`);
 
   return `${indent}<path ${attrs.join(" ")}/>`;
 }
 
-function convertSvgChildren(el: XmlElement, inheritedOpacity: number, indent: string): string[] {
+function convertSvgChildren(
+  el: XmlElement,
+  paint: Record<string, string>,
+  inheritedOpacity: number,
+  indent: string,
+): string[] {
   const lines: string[] = [];
   for (const child of childElements(el)) {
     const tag = localName(child).toLowerCase();
     if (tag === "defs" || tag === "metadata" || tag === "title" || tag === "desc") continue;
-    if (tag === "clippath" || tag === "mask") continue;
-    if (tag === "g" || tag === "svg" || tag === "a" || tag === "symbol") {
-      lines.push(...convertSvgGroup(child, inheritedOpacity, indent));
-    } else if (tag === "path") {
-      const converted = convertSvgPath(child, parseStyle(child), inheritedOpacity, indent);
-      if (converted) lines.push(converted);
+    if (tag === "clippath" || tag === "mask" || tag === "symbol") continue;
+    const style = parseStyle(child);
+    if (svgAttr(child, style, "display") === "none") continue;
+    if (tag === "g" || tag === "svg" || tag === "a") {
+      lines.push(...convertSvgGroup(child, paint, inheritedOpacity, indent));
+      continue;
     }
-    // Other SVG shapes (rect/circle/...) have no VectorDrawable equivalent
-    // and are skipped; paths carry the artwork.
+    // Other elements (text, image, use, ...) have no VectorDrawable equivalent.
+    const d = shapeToPathData(child, tag);
+    if (d === undefined) continue;
+    const opacity = inheritedOpacity * parseNum(svgAttr(child, style, "opacity"), 1);
+    const path = convertSvgPath(child, d, inheritPaint(child, style, paint), opacity, indent);
+    lines.push(...wrapInGroups([path], parseTransform(child), undefined, indent));
   }
   return lines;
 }
 
-function convertSvgGroup(el: XmlElement, inheritedOpacity: number, indent: string): string[] {
+function convertSvgGroup(
+  el: XmlElement,
+  parentPaint: Record<string, string>,
+  inheritedOpacity: number,
+  indent: string,
+  outerWrappers: VdGroupAttrs[] = [],
+): string[] {
   const style = parseStyle(el);
   const elementOpacity = parseNum(svgAttr(el, style, "opacity"), 1);
   const opacity = inheritedOpacity * elementOpacity;
+  const paint = inheritPaint(el, style, parentPaint);
 
   const name = el.getAttribute("id");
   const groupName = name !== null && name !== "" ? name : undefined;
 
-  const transform = el.getAttribute("transform");
-  let wrappers: VdGroupAttrs[] = [];
-  if (transform !== null && transform.trim() !== "") {
-    try {
-      wrappers = svgTransformToGroups(transform);
-    } catch {
-      // Unrepresentable transforms (skew/general matrix) are dropped; the
-      // artwork itself is still converted.
-      wrappers = [];
-    }
-  }
+  let wrappers = [...outerWrappers, ...parseTransform(el)];
 
   const isGroup = localName(el).toLowerCase() === "g";
   // A plain <g> with no transform flattens away, unless it carries a name
   // worth preserving as android:name.
   if (isGroup && wrappers.length === 0 && groupName !== undefined) wrappers = [{}];
 
-  const innerIndent = wrappers.length > 0 ? `${indent}${"  ".repeat(wrappers.length)}` : indent;
-  const inner = convertSvgChildren(el, opacity, innerIndent);
+  const inner = convertSvgChildren(el, paint, opacity, indent);
   if (inner.length === 0) return [];
-  if (wrappers.length === 0) return inner;
+  return wrapInGroups(inner, wrappers, isGroup ? groupName : undefined, indent);
+}
 
-  const lines: string[] = [];
-  wrappers.forEach((attrs, i) => {
-    lines.push(openVdGroup(attrs, i === 0 ? groupName : undefined, `${indent}${"  ".repeat(i)}`));
-  });
-  lines.push(...inner);
-  for (let i = wrappers.length - 1; i >= 0; i--) {
-    lines.push(`${indent}${"  ".repeat(i)}</group>`);
-  }
-  return lines;
+/// Parses an element's transform; skew transforms can't be represented and throw.
+function parseTransform(el: XmlElement): VdGroupAttrs[] {
+  const transform = el.getAttribute("transform");
+  return transform ? svgTransformToGroups(transform) : [];
+}
+
+/// Nests already-converted lines inside one VectorDrawable group per wrapper.
+function wrapInGroups(
+  inner: string[],
+  wrappers: VdGroupAttrs[],
+  name: string | undefined,
+  indent: string,
+): string[] {
+  if (wrappers.length === 0) return inner;
+  const pad = "  ".repeat(wrappers.length);
+  return [
+    ...wrappers.map((attrs, i) =>
+      openVdGroup(attrs, i === 0 ? name : undefined, `${indent}${"  ".repeat(i)}`),
+    ),
+    ...inner.map((line) => `${pad}${line}`),
+    ...wrappers.map((_, i) => `${indent}${"  ".repeat(wrappers.length - 1 - i)}</group>`),
+  ];
 }
 
 function svgToVectorDrawable(text: string): string {
@@ -538,23 +613,29 @@ function svgToVectorDrawable(text: string): string {
     .filter((s) => s.length > 0)
     .map(Number)
     .filter((n) => Number.isFinite(n));
-  const widthAttr = svg.getAttribute("width");
-  const heightAttr = svg.getAttribute("height");
+  // Percentages are relative to an unknown container, so ignore them.
+  const length = (name: string) => {
+    const value = svg.getAttribute(name);
+    return value === null || value.trim().endsWith("%") ? undefined : value;
+  };
+  const widthAttr = length("width");
+  const heightAttr = length("height");
 
   let viewportWidth = 24;
   let viewportHeight = 24;
+  let minX = 0;
+  let minY = 0;
   if (viewBoxNums.length >= 4) {
-    viewportWidth = viewBoxNums[2];
-    viewportHeight = viewBoxNums[3];
+    [minX, minY, viewportWidth, viewportHeight] = viewBoxNums;
   } else {
-    if (widthAttr !== null) viewportWidth = parseNum(widthAttr, viewportWidth);
-    if (heightAttr !== null) viewportHeight = parseNum(heightAttr, viewportHeight);
+    viewportWidth = parseNum(widthAttr, viewportWidth);
+    viewportHeight = parseNum(heightAttr, viewportHeight);
   }
   if (!(viewportWidth > 0) || !(viewportHeight > 0)) {
     throw new Error("Invalid SVG: bad viewport dimensions.");
   }
-  const width = widthAttr !== null ? parseNum(widthAttr, viewportWidth) : viewportWidth;
-  const height = heightAttr !== null ? parseNum(heightAttr, viewportHeight) : viewportHeight;
+  const width = parseNum(widthAttr, viewportWidth);
+  const height = parseNum(heightAttr, viewportHeight);
 
   const lines: string[] = [
     `<?xml version="1.0" encoding="utf-8"?>`,
@@ -565,27 +646,9 @@ function svgToVectorDrawable(text: string): string {
     `    android:viewportHeight="${fmtNum(viewportHeight)}">`,
   ];
 
-  // A transform on the root svg element itself maps onto an outer group.
-  const rootTransform = svg.getAttribute("transform");
-  let rootWrappers: VdGroupAttrs[] = [];
-  if (rootTransform !== null && rootTransform.trim() !== "") {
-    try {
-      rootWrappers = svgTransformToGroups(rootTransform);
-    } catch {
-      rootWrappers = [];
-    }
-  }
-
-  const rootOpacity = parseNum(svg.getAttribute("opacity") ?? undefined, 1);
-  const rootIndent = rootWrappers.length > 0 ? `    ${"  ".repeat(rootWrappers.length)}` : "    ";
-  const inner = convertSvgChildren(svg, rootOpacity, rootIndent);
-  rootWrappers.forEach((attrs, i) => {
-    lines.push(openVdGroup(attrs, undefined, `    ${"  ".repeat(i)}`));
-  });
-  lines.push(...inner);
-  for (let i = rootWrappers.length - 1; i >= 0; i--) {
-    lines.push(`    ${"  ".repeat(i)}</group>`);
-  }
+  // A viewBox origin other than 0,0 becomes an outer translation.
+  const viewBoxShift = minX !== 0 || minY !== 0 ? [{ translateX: -minX, translateY: -minY }] : [];
+  lines.push(...convertSvgGroup(svg, {}, 1, "    ", viewBoxShift));
   lines.push(`</vector>`);
   return `${lines.join("\n")}\n`;
 }
