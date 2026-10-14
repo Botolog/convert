@@ -38,17 +38,15 @@ class sevenZipHandler implements FormatHandler {
     this.supportedFormats = [];
     this.#tarCompressedFormats = [];
 
-    const stdout: number[] = [];
+    let text = "";
     const sevenZip = await SevenZip({
       ...defaultSevenZipOptions,
-      stdout: (c: number) => {
-        stdout.push(c);
+      print(str: string) {
+        text += str + "\n";
       },
     });
 
     sevenZip.callMain(["i"]);
-
-    const text = decode(new Uint8Array(stdout));
 
     // no codecs for now
     const formatsText = text.match(/\n\n\nFormats:\n(.*?)\n\n/s);
@@ -140,18 +138,11 @@ class sevenZipHandler implements FormatHandler {
       throw new TypeError(`sevenZipHandler cannot convert to ${outputFormat.mime}`);
     }
 
-    let logBuffer = "";
     const createSevenZip = async () => {
       return await SevenZip({
         ...defaultSevenZipOptions,
-        stdout: (c: number) => {
-          const char = String.fromCharCode(c);
-          if (char === "\n") {
-            ctx?.log(logBuffer, "debug");
-            logBuffer = "";
-          } else {
-            logBuffer += char;
-          }
+        print(str: string) {
+          ctx?.log(str, "debug");
         },
       });
     };
