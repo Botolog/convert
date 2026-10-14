@@ -14,7 +14,7 @@ const HANDLERS = {
   svgTrace: [],
   canvasToBlob: [],
   svgToBlob: [],
-  vectordrawable: [],
+  vectorDrawable: [],
   meyda: [],
   htmlEmbed: [],
   mediabunny: [],

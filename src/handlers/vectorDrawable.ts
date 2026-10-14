@@ -594,8 +594,8 @@ function svgToVectorDrawable(text: string): string {
 // Handler
 // ---------------------------------------------------------------------------
 
-class vectordrawableHandler implements FormatHandler {
-  public readonly name = "vectordrawable";
+class vectorDrawableHandler implements FormatHandler {
+  public readonly name = "vectorDrawable";
   public supportedFormats = [
     Formats.VECTORDRAWABLE.builder("vectordrawable").fromTo(),
     Formats.SVG.builder("svg").fromTo(),
@@ -613,7 +613,6 @@ class vectordrawableHandler implements FormatHandler {
   ): Promise<FileData[]> {
     const outputFiles: FileData[] = [];
     for (const inputFile of inputFiles) {
-      // Never mutate the caller's buffer; decode copies out of it.
       const text = decode(inputFile.bytes);
       let converted: string;
       if (inputFormat.internal === "vectordrawable" && outputFormat.internal === "svg") {
@@ -634,4 +633,4 @@ class vectordrawableHandler implements FormatHandler {
   }
 }
 
-export default vectordrawableHandler;
+export default vectorDrawableHandler;
